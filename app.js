@@ -66,6 +66,15 @@ function init() {
     // Enable WebXR for VR/AR support
     state.renderer.xr.enabled = true;
 
+    // Defer sizing to after layout completes (fixes iOS Safari canvas size)
+    requestAnimationFrame(() => {
+        const { w, h } = getSize();
+        if (w > 0 && h > 0) {
+            state.camera.aspect = w / h;
+            state.camera.updateProjectionMatrix();
+            state.renderer.setSize(w, h);
+        }
+    });
     // Controls - Optimized for touch devices
     state.controls = new OrbitControls(state.camera, canvas);
     state.controls.enableDamping = true;
@@ -118,35 +127,136 @@ function init() {
 
 // Setup VR/AR Buttons
 function setupVRARButtons() {
-    const container = document.getElementById('canvas-container');
+    const arButton = document.getElementById('ar-button');
+    const vrButton = document.getElementById('vr-button');
+    if (!arButton || !vrButton) return;
 
-    // Check if WebXR is supported
-    if ('xr' in navigator) {
-        // Add VR Button
-        navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
-            if (supported) {
-                const vrButton = VRButton.createButton(state.renderer);
-                vrButton.style.position = 'absolute';
-                vrButton.style.bottom = '20px';
-                vrButton.style.left = '20px';
-                container.appendChild(vrButton);
-                console.log('VR support detected');
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isAndroid = /Android/.test(navigator.userAgent);
+    const isMobile = isIOS || isAndroid;
+
+    // 幫助函數：計算目前模型適當相機距離
+    function getGoodCameraPosition(multiplier) {
+        if (!state.currentModel) return;
+        const box = new THREE.Box3().setFromObject(state.currentModel);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const distance = maxDim * (multiplier || 2.5);
+        const dir = state.camera.position.clone().sub(center).normalize();
+        state.camera.position.copy(center).addScaledVector(dir, distance);
+        state.camera.position.y = center.y + maxDim * 0.5; // 稍微偵俦
+        state.controls.target.copy(center);
+        state.controls.update();
+    }
+
+    // --------------------------------------------------
+    // Cardboard VR（手機模式）
+    // --------------------------------------------------
+    if (isMobile) {
+        vrButton.style.display = 'flex';
+        let inVR = false;
+
+        vrButton.addEventListener('click', () => {
+            if (!state.currentModel) { alert('請先載入模型'); return; }
+            inVR = !inVR;
+
+            if (inVR) {
+                getGoodCameraPosition(2.5);
+                state.camera.fov = 80;
+                state.camera.updateProjectionMatrix();
+                enterStereoMode();
+                vrButton.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
+            } else {
+                exitStereoMode();
+                state.camera.fov = 45;
+                state.camera.updateProjectionMatrix();
+                vrButton.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
             }
         });
+    }
 
-        // Add AR Button
+    // --------------------------------------------------
+    // Android WebXR AR（直接用 Session API，不增加額外按鈕）
+    // --------------------------------------------------
+    if (isAndroid && navigator.xr) {
         navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
-            if (supported) {
-                const arButton = ARButton.createButton(state.renderer);
-                arButton.style.position = 'absolute';
-                arButton.style.bottom = '20px';
-                arButton.style.left = '150px'; // Offset from VR button
-                container.appendChild(arButton);
-                console.log('AR support detected');
+            if (!supported) return;
+            arButton.style.display = 'flex';
+            let arSession = null;
+
+            arButton.addEventListener('click', async () => {
+                if (!state.currentModel) { alert('請先載入模型'); return; }
+                if (arSession) { await arSession.end(); return; }
+
+                try {
+                    arSession = await navigator.xr.requestSession('immersive-ar', {
+                        requiredFeatures: ['local'],
+                    });
+                    state.renderer.xr.setSession(arSession);
+                    arButton.innerHTML = '<span class="btn-icon">❌</span><span class="btn-text">退出 AR</span>';
+                    arSession.addEventListener('end', () => {
+                        arSession = null;
+                        state.renderer.xr.setSession(null);
+                        arButton.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR 模式</span>';
+                    });
+                } catch (e) {
+                    alert('AR 啟動失敗: ' + e.message);
+                }
+            });
+        });
+    }
+
+    // --------------------------------------------------
+    // iOS Quick Look AR
+    // --------------------------------------------------
+    if (isIOS) {
+        arButton.style.display = 'flex';
+        arButton.addEventListener('click', async () => {
+            if (!state.currentModel) { alert('請先載入模型'); return; }
+            try {
+                arButton.textContent = '轉換中...';
+                const exporter = new USDZExporter();
+                const buf = await exporter.parse(state.currentModel);
+                const url = URL.createObjectURL(new Blob([buf], { type: 'model/vnd.usdz+zip' }));
+                Object.assign(document.createElement('a'), { rel: 'ar', href: url, download: 'model.usdz' }).click();
+                arButton.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR 模式</span>';
+            } catch (e) {
+                alert('AR 功能暫時無法使用');
+                arButton.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR 模式</span>';
             }
         });
-    } else {
-        console.log('WebXR not supported on this device');
+    }
+
+    // --------------------------------------------------
+    // 桌面 WebXR VR（直接用 Session API，不增加額外按鈕）
+    // --------------------------------------------------
+    if (!isMobile && navigator.xr) {
+        navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+            if (!supported) return;
+            vrButton.style.display = 'flex';
+            let vrSession = null;
+
+            vrButton.addEventListener('click', async () => {
+                if (!state.currentModel) { alert('請先載入模型'); return; }
+                if (vrSession) { await vrSession.end(); return; }
+
+                try {
+                    vrSession = await navigator.xr.requestSession('immersive-vr', {
+                        optionalFeatures: ['local-floor', 'bounded-floor'],
+                    });
+                    state.renderer.xr.setSession(vrSession);
+                    vrButton.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
+                    vrSession.addEventListener('end', () => {
+                        vrSession = null;
+                        state.renderer.xr.setSession(null);
+                        vrButton.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
+                    });
+                } catch (e) {
+                    alert('VR 啟動失敗: ' + e.message);
+                }
+            });
+        });
     }
 }
 
