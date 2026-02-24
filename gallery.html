@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模型庫 | 3D Model Gallery</title>
+    <meta name="description" content="瀏覽和選擇 3D 模型">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: hsl(260, 80%, 60%);
+            --accent: hsl(180, 70%, 55%);
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 100%);
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            background: linear-gradient(135deg, var(--primary), hsl(260, 80%, 45%));
+            color: white;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.25s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(138, 43, 226, 0.4);
+        }
+
+        .btn-secondary {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Search and Filter */
+        .controls {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .search-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 250px;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 0.5rem;
+            color: white;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        .search-input::placeholder {
+            color: #888;
+        }
+
+        .filter-tags {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 2rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tag:hover,
+        .tag.active {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        /* Model Grid */
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .model-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 1rem;
+            overflow: hidden;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .model-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 24px rgba(138, 43, 226, 0.3);
+            border-color: var(--primary);
+        }
+
+        .model-thumbnail {
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            position: relative;
+        }
+
+        .model-thumbnail img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .model-lock {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            font-size: 1.25rem;
+        }
+
+        .model-info {
+            padding: 1.25rem;
+        }
+
+        .model-name {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .model-description {
+            font-size: 0.875rem;
+            color: #b0b0b0;
+            margin-bottom: 0.75rem;
+            line-height: 1.5;
+        }
+
+        .model-meta {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .model-tag {
+            padding: 0.25rem 0.75rem;
+            background: rgba(138, 43, 226, 0.2);
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            color: var(--accent);
+        }
+
+        /* Password Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 1rem;
+            padding: 2rem;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 0.5rem;
+            color: white;
+            font-family: inherit;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        .error-message {
+            color: #ff4444;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #888;
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .model-grid {
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                gap: 1rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .model-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🎨 模型庫</h1>
+            <div class="header-actions">
+                <a href="index.html" class="btn btn-secondary">
+                    <span>🔙</span>
+                    返回檢視器
+                </a>
+                <a href="admin.html" class="btn">
+                    <span>⚙️</span>
+                    管理
+                </a>
+            </div>
+        </div>
+
+        <!-- Search and Filter -->
+        <div class="controls">
+            <div class="search-bar">
+                <input type="text" id="search-input" class="search-input" placeholder="搜尋模型...">
+            </div>
+            <div class="filter-tags" id="category-filters">
+                <div class="tag active" data-category="all">全部</div>
+            </div>
+        </div>
+
+        <!-- Model Grid -->
+        <div class="model-grid" id="model-grid">
+            <!-- Models will be loaded here -->
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="empty-state" style="display: none;">
+            <div class="empty-state-icon">📦</div>
+            <h2>沒有找到模型</h2>
+            <p>請嘗試其他搜尋條件或新增模型</p>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div class="modal" id="password-modal">
+        <div class="modal-content">
+            <h2 class="modal-title">🔒 需要密碼</h2>
+            <p style="color: #b0b0b0; margin-bottom: 1rem;">此模型受密碼保護</p>
+            <div class="error-message" id="error-message" style="display: none;"></div>
+            <input type="password" id="password-input" class="modal-input" placeholder="請輸入密碼">
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closePasswordModal()">取消</button>
+                <button class="btn" onclick="verifyPassword()">確認</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        let database = null;
+        let currentModel = null;
+        let selectedCategory = 'all';
+
+        // Load database
+        async function loadDatabase() {
+            try {
+                const response = await fetch('models/database.json');
+                database = await response.json();
+                initializeFilters();
+                renderModels();
+            } catch (error) {
+                console.error('Failed to load database:', error);
+                document.getElementById('empty-state').style.display = 'block';
+            }
+        }
+
+        // Initialize category filters
+        function initializeFilters() {
+            const filtersContainer = document.getElementById('category-filters');
+            const allTag = filtersContainer.querySelector('[data-category="all"]');
+
+            database.categories.forEach(category => {
+                const tag = document.createElement('div');
+                tag.className = 'tag';
+                tag.dataset.category = category;
+                tag.textContent = category;
+                tag.onclick = () => filterByCategory(category);
+                filtersContainer.appendChild(tag);
+            });
+        }
+
+        // Filter by category
+        function filterByCategory(category) {
+            selectedCategory = category;
+            document.querySelectorAll('.tag').forEach(tag => {
+                tag.classList.toggle('active', tag.dataset.category === category);
+            });
+            renderModels();
+        }
+
+        // Search models
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            renderModels(e.target.value.toLowerCase());
+        });
+
+        // Render models
+        function renderModels(searchQuery = '') {
+            const grid = document.getElementById('model-grid');
+            const emptyState = document.getElementById('empty-state');
+            grid.innerHTML = '';
+
+            let filteredModels = database.models.filter(model => {
+                const matchesCategory = selectedCategory === 'all' || model.category === selectedCategory;
+                const matchesSearch = !searchQuery ||
+                    model.name.toLowerCase().includes(searchQuery) ||
+                    model.description.toLowerCase().includes(searchQuery) ||
+                    model.tags.some(tag => tag.toLowerCase().includes(searchQuery));
+                return matchesCategory && matchesSearch;
+            });
+
+            if (filteredModels.length === 0) {
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+
+            filteredModels.forEach(model => {
+                const card = createModelCard(model);
+                grid.appendChild(card);
+            });
+        }
+
+        // Create model card
+        function createModelCard(model) {
+            const card = document.createElement('div');
+            card.className = 'model-card';
+            card.onclick = () => selectModel(model);
+
+            const thumbnail = model.thumbnail || '';
+            const hasPassword = model.password && model.password !== '';
+            const isDemo = model.isDemo || false;
+
+            card.innerHTML = `
+                <div class="model-thumbnail">
+                    ${thumbnail ? `<img src="${thumbnail}" alt="${model.name}">` : '🎨'}
+                    ${hasPassword ? '<div class="model-lock">🔒</div>' : ''}
+                </div>
+                <div class="model-info">
+                    <div class="model-name">${model.name}</div>
+                    <div class="model-description">${model.description}</div>
+                    <div class="model-meta">
+                        <span class="model-tag">${model.category}</span>
+                        ${model.tags.map(tag => `<span class="model-tag">${tag}</span>`).join('')}
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        // Select model
+        function selectModel(model) {
+            currentModel = model;
+
+            // Check if password is required
+            if (model.password && model.password !== '') {
+                // Check if password is saved in localStorage
+                const savedPassword = localStorage.getItem(`model_${model.id}_password`);
+                if (savedPassword === model.password) {
+                    loadModel(model);
+                } else {
+                    showPasswordModal();
+                }
+            } else {
+                loadModel(model);
+            }
+        }
+
+        // Show password modal
+        function showPasswordModal() {
+            document.getElementById('password-modal').classList.add('active');
+            document.getElementById('password-input').value = '';
+            document.getElementById('error-message').style.display = 'none';
+            document.getElementById('password-input').focus();
+        }
+
+        // Close password modal
+        window.closePasswordModal = function () {
+            document.getElementById('password-modal').classList.remove('active');
+            currentModel = null;
+        }
+
+        // Verify password
+        window.verifyPassword = function () {
+            const input = document.getElementById('password-input').value;
+            const errorMsg = document.getElementById('error-message');
+
+            if (input === currentModel.password) {
+                // Save password to localStorage
+                localStorage.setItem(`model_${currentModel.id}_password`, input);
+                closePasswordModal();
+                loadModel(currentModel);
+            } else {
+                errorMsg.textContent = '密碼錯誤，請重試';
+                errorMsg.style.display = 'block';
+            }
+        }
+
+        // Load model in viewer
+        function loadModel(model) {
+            if (model.isDemo) {
+                // Load demo model (no file)
+                window.location.href = 'index.html';
+            } else {
+                // Load model file
+                window.location.href = `index.html?model=${encodeURIComponent(model.file)}`;
+            }
+        }
+
+        // Enter key to verify password
+        document.getElementById('password-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                verifyPassword();
+            }
+        });
+
+        // Initialize
+        loadDatabase();
+    </script>
+</body>
+
+</html>

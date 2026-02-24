@@ -1,0 +1,41 @@
+{
+  "models": [
+    {
+      "id": "demo_cube",
+      "name": "Demo 立方體",
+      "description": "預設的展示模型，包含一個立方體和四個球體",
+      "file": "",
+      "thumbnail": "",
+      "password": "",
+      "category": "示範",
+      "tags": [
+        "demo",
+        "幾何"
+      ],
+      "uploadDate": "2026-02-13",
+      "isDemo": true
+    },
+    {
+      "id": "Cring",
+      "name": "fbx_test",
+      "description": "test",
+      "file": "models/ring.glb",
+      "thumbnail": "thumbnails/68695.jpg",
+      "password": "aaa",
+      "category": "產品",
+      "tags": [
+        "3D",
+        "設計"
+      ],
+      "uploadDate": "2026-02-13"
+    }
+  ],
+  "categories": [
+    "示範",
+    "建築",
+    "角色",
+    "產品",
+    "其他"
+  ],
+  "version": "1.0"
+}

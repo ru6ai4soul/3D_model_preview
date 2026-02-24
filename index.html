@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 模型預覽器 | Model Viewer</title>
+    <meta name="description" content="專業的 3D 模型預覽工具，支援 GLB、GLTF、FBX 格式，具備完整動畫控制功能">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loader">
+            <div class="loader-ring"></div>
+            <div class="loader-ring"></div>
+            <div class="loader-ring"></div>
+        </div>
+        <p class="loading-text">初始化 3D 引擎...</p>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🎨</span>
+                <span class="logo-text">3D 模型預覽器</span>
+                <span class="version">v7.3</span>
+            </div>
+            <div class="header-actions">
+                <a href="gallery.html" class="btn btn-secondary">
+                    <span class="btn-icon">📚</span>
+                    <span class="btn-text">模型庫</span>
+                </a>
+                <input type="file" id="file-input" accept=".glb,.gltf,.fbx" hidden>
+                <button id="load-model-btn" class="btn btn-primary">
+                    <span class="btn-icon">🎨</span>
+                    <span class="btn-text">載入模型</span>
+                </button>
+                <button id="panel-toggle-btn" class="btn btn-secondary" onclick="togglePanel()">
+                    <span class="btn-icon">⚙️</span>
+                    <span class="btn-text" id="panel-toggle-text">開啟面板</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- 3D Canvas -->
+            <div id="canvas-container" class="canvas-container">
+                <canvas id="canvas"></canvas>
+
+                <!-- Canvas Overlay Info -->
+                <div class="canvas-overlay">
+                    <div class="fps-counter" id="fps-counter">FPS: 60</div>
+                </div>
+            </div>
+
+            <!-- Control Panel (預設收合) -->
+            <aside class="control-panel collapsed" id="control-panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">控制面板</h2>
+                    <button class="panel-close-btn" onclick="togglePanel()" title="關閉面板">✕</button>
+                </div>
+
+                <div class="panel-content">
+                    <!-- Model Info Section -->
+                    <section class="control-section">
+                        <h3 class="section-title">模型資訊</h3>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">名稱:</span>
+                                <span class="info-value" id="model-name">未載入</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">頂點:</span>
+                                <span class="info-value" id="vertex-count">0</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">三角面:</span>
+                                <span class="info-value" id="face-count">0</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">動畫:</span>
+                                <span class="info-value" id="animation-count">0</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Animation Controls Section -->
+                    <section class="control-section" id="animation-section" style="display: none;">
+                        <h3 class="section-title">動畫控制</h3>
+
+                        <!-- Animation Selector -->
+                        <div class="control-group">
+                            <label class="control-label">選擇動畫</label>
+                            <select id="animation-select" class="select-input">
+                                <option value="">無動畫</option>
+                            </select>
+                        </div>
+
+                        <!-- Playback Controls -->
+                        <div class="playback-controls">
+                            <button id="play-pause-btn" class="btn btn-icon-only" title="播放/暫停">
+                                <span class="play-icon">▶</span>
+                            </button>
+                            <button id="stop-btn" class="btn btn-icon-only" title="停止">
+                                <span>⏹</span>
+                            </button>
+                            <div class="control-group flex-grow">
+                                <label class="control-label">
+                                    時間: <span id="current-time">0.00</span>s / <span id="total-time">0.00</span>s
+                                </label>
+                                <input type="range" id="timeline-slider" class="slider" min="0" max="100" value="0"
+                                    step="0.1">
+                            </div>
+                        </div>
+
+                        <!-- Animation Settings -->
+                        <div class="control-group">
+                            <label class="control-label">
+                                播放速度: <span id="speed-value">1.0</span>x
+                            </label>
+                            <input type="range" id="speed-slider" class="slider" min="0.1" max="2" value="1" step="0.1">
+                        </div>
+
+                        <div class="control-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="loop-checkbox" checked>
+                                <span class="checkbox-text">循環播放</span>
+                            </label>
+                        </div>
+                    </section>
+
+                    <!-- Scene Controls Section -->
+                    <section class="control-section">
+                        <h3 class="section-title">場景設定</h3>
+
+                        <div class="control-group">
+                            <label class="control-label">
+                                環境光強度: <span id="ambient-value">0.5</span>
+                            </label>
+                            <input type="range" id="ambient-slider" class="slider" min="0" max="2" value="0.5"
+                                step="0.1">
+                        </div>
+
+                        <div class="control-group">
+                            <label class="control-label">
+                                方向光強度: <span id="directional-value">1.0</span>
+                            </label>
+                            <input type="range" id="directional-slider" class="slider" min="0" max="3" value="1"
+                                step="0.1">
+                        </div>
+
+                        <div class="control-group">
+                            <label class="control-label">背景顏色</label>
+                            <input type="color" id="bg-color" class="color-input" value="#0a0a0a">
+                        </div>
+
+                        <div class="control-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="grid-checkbox" checked>
+                                <span class="checkbox-text">顯示網格</span>
+                            </label>
+                        </div>
+
+                        <div class="control-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="wireframe-checkbox">
+                                <span class="checkbox-text">線框模式</span>
+                            </label>
+                        </div>
+                    </section>
+
+                    <!-- Camera Controls Section -->
+                    <section class="control-section">
+                        <h3 class="section-title">相機控制</h3>
+
+                        <button id="reset-camera-btn" class="btn btn-secondary full-width">
+                            <span class="btn-icon">🎯</span>
+                            重置相機
+                        </button>
+
+                        <!-- AR/VR 按鈕 -->
+                        <button id="ar-button" class="btn btn-ar full-width" style="display: none;">
+                            <span class="btn-icon">📱</span>
+                            <span class="btn-text">AR 模式</span>
+                        </button>
+
+                        <button id="vr-button" class="btn btn-vr full-width" style="display: none;">
+                            <span class="btn-icon">🥽</span>
+                            <span class="btn-text">VR 模式</span>
+                        </button>
+
+                        <div class="control-group">
+                            <label class="control-label">
+                                自動旋轉速度: <span id="rotate-value">0.0</span>
+                            </label>
+                            <input type="range" id="rotate-slider" class="slider" min="0" max="5" value="0" step="0.1">
+                        </div>
+                    </section>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Three.js and Dependencies (Local) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./libs/three.module.js",
+            "three/addons/": "./libs/addons/"
+        }
+    }
+    </script>
+
+    <!-- Main Application -->
+    <script type="module" src="app.js"></script>
+</body>
+
+</html>

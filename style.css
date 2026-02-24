@@ -1,0 +1,812 @@
+﻿/* ==================== 基礎變數 ==================== */
+/* 修復 iOS Safari 全高度問題 */
+html,
+body {
+    height: 100%;
+}
+
+body {
+    /* 用 dvh 支援 iOS Safari 動態視埠，回退到 100vh */
+    min-height: 100vh;
+}
+
+:root {
+    --primary: hsl(260, 80%, 60%);
+    --accent: hsl(180, 70%, 55%);
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --panel-width: 320px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: #0a0a0a;
+    color: #fff;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==================== Loading Screen ==================== */
+.loading-screen {
+    position: fixed;
+    inset: 0;
+    background: #0a0a0a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    transition: opacity 0.3s;
+}
+
+.loading-screen.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loader {
+    position: relative;
+    width: 80px;
+    height: 80px;
+}
+
+.loader-ring {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border: 3px solid transparent;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+}
+
+.loader-ring:nth-child(2) {
+    border-top-color: var(--accent);
+    animation-delay: 0.2s;
+}
+
+.loader-ring:nth-child(3) {
+    border-top-color: #ff00ff;
+    animation-delay: 0.4s;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-text {
+    margin-top: 2rem;
+    font-size: 1rem;
+    color: #b0b0b0;
+}
+
+/* ==================== Container ==================== */
+.container {
+    /* 支援所有瀏覽器：100dvh > 100svh > CSS var > window.innerHeight */
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ==================== Header ==================== */
+.header {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--glass-border);
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 100;
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: white;
+}
+
+.logo-icon {
+    font-size: 1.75rem;
+}
+
+.version {
+    font-size: 0.75rem;
+    color: var(--accent);
+    background: rgba(138, 43, 226, 0.2);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: 600;
+}
+
+.header-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+/* Panel Open Button in Header */
+.panel-open-btn-header {
+    width: 2.5rem;
+    height: 2.5rem;
+    background: linear-gradient(135deg, var(--primary), hsl(260, 80%, 45%));
+    border: 1px solid var(--glass-border);
+    border-radius: 50%;
+    color: white;
+    font-size: 1.25rem;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.25s;
+    box-shadow: 0 4px 12px rgba(138, 43, 226, 0.3);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.panel-open-btn-header:active {
+    transform: scale(0.95);
+}
+
+/* ==================== Buttons ==================== */
+.btn {
+    padding: 0.5rem 1.5rem;
+    border: none;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    background: linear-gradient(135deg, var(--primary), hsl(260, 80%, 45%));
+    color: white;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.25s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    touch-action: manipulation;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(138, 43, 226, 0.4);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn-secondary {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+}
+
+.btn-icon {
+    font-size: 1.1rem;
+}
+
+.full-width {
+    width: 100%;
+}
+
+.btn-icon-only {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    justify-content: center;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+}
+
+/* ==================== Main Content ==================== */
+.main-content {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+    /* 修復 Safari flex 子元素高度問題 */
+}
+
+/* ==================== Canvas ==================== */
+.canvas-container {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+    /* 修復 Safari flex 子元素高度問題 */
+    width: 100%;
+}
+
+#canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    touch-action: none;
+}
+
+.canvas-overlay {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    pointer-events: none;
+}
+
+.fps-counter {
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* ==================== Panel Open Button ==================== */
+.panel-open-btn {
+    position: fixed;
+    /* 改為 fixed，相對於視窗定位 */
+    top: 1rem;
+    right: 1rem;
+    width: 3rem;
+    height: 3rem;
+    background: linear-gradient(135deg, var(--primary), hsl(260, 80%, 45%));
+    border: 1px solid var(--glass-border);
+    border-radius: 50%;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: none;
+    /* 桌面預設隱藏 */
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto !important;
+    z-index: 9999 !important;
+    /* 確保在最上層 */
+    transition: all 0.25s;
+    box-shadow: 0 4px 12px rgba(138, 43, 226, 0.3);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.panel-open-btn:hover {
+    transform: scale(1.1) rotate(90deg);
+}
+
+.panel-open-btn:active {
+    transform: scale(1.05) rotate(90deg);
+}
+
+/* ==================== Control Panel ====================*/
+.control-panel {
+    position: fixed;
+    right: 0;
+    top: 80px;
+    width: 350px;
+    height: calc(100vh - 80px);
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-left: 1px solid var(--glass-border);
+    overflow-y: auto;
+    overflow-x: hidden;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 100;
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+.control-panel.collapsed {
+    transform: translateX(100%);
+}
+
+.panel-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--glass-border);
+    background: rgba(138, 43, 226, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin: 0;
+}
+
+.panel-close-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--glass-border);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.panel-close-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+}
+
+.panel-toggle {
+    background: rgba(138, 43, 226, 0.2);
+    border: 1px solid rgba(138, 43, 226, 0.3);
+    border-radius: 0.375rem;
+    color: var(--accent);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    transition: all 0.15s;
+    touch-action: manipulation;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 固定在右側的切換按鈕 */
+.panel-toggle-fixed {
+    position: fixed;
+    right: 10px;
+    top: 80px;
+    z-index: 300;
+    background: rgba(138, 43, 226, 0.9);
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0.75rem;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(138, 43, 226, 0.4);
+    transition: all 0.3s ease;
+}
+
+.panel-toggle-fixed:hover {
+    background: var(--accent);
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(138, 43, 226, 0.6);
+}
+
+.panel-toggle:hover {
+    background: rgba(138, 43, 226, 0.3);
+    transform: scale(1.05);
+}
+
+.panel-toggle:active {
+    transform: scale(0.95);
+}
+
+.panel-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 1.5rem;
+    -webkit-overflow-scrolling: touch;
+    /* iOS 平滑滾動 */
+}
+
+/* ==================== Control Sections ==================== */
+.control-section {
+    margin-bottom: 2rem;
+}
+
+.section-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #b0b0b0;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--glass-border);
+}
+
+/* ==================== Info Grid ==================== */
+.info-grid {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+}
+
+.info-label {
+    color: #b0b0b0;
+}
+
+.info-value {
+    font-weight: 600;
+    color: var(--accent);
+}
+
+/* ==================== Controls ==================== */
+.control-group {
+    margin-bottom: 1rem;
+}
+
+.control-label {
+    display: block;
+    font-size: 0.875rem;
+    color: #b0b0b0;
+    margin-bottom: 0.5rem;
+}
+
+/* ==================== Sliders ==================== */
+.slider {
+    width: 100%;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+.slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.slider::-moz-range-thumb:hover {
+    transform: scale(1.2);
+}
+
+/* ==================== Select Input ==================== */
+.select-input {
+    width: 100%;
+    padding: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 0.375rem;
+    color: white;
+    font-family: inherit;
+    font-size: 0.875rem;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.select-input:focus {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--primary);
+}
+
+/* ==================== Color Input ==================== */
+.color-input {
+    width: 100%;
+    height: 40px;
+    padding: 0.25rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 0.375rem;
+    cursor: pointer;
+}
+
+/* ==================== Checkbox ==================== */
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.checkbox-text {
+    font-size: 0.875rem;
+}
+
+/* ==================== Playback Controls ==================== */
+.playback-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+    margin-bottom: 1rem;
+}
+
+.flex-grow {
+    flex: 1;
+}
+
+/* ==================== 響應式設計 ==================== */
+
+/* 平板 (768px 以下) */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+    }
+
+    .header {
+        padding: 0.75rem 1rem;
+    }
+
+    .logo {
+        font-size: 1.25rem;
+    }
+
+    .logo-text {
+        display: none;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+    }
+
+    .control-panel {
+        position: fixed;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 85%;
+        max-width: 320px;
+        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .panel-content {
+        padding: 1rem;
+    }
+
+    .fps-counter {
+        font-size: 0.75rem;
+        padding: 0.375rem 0.75rem;
+    }
+
+    .canvas-overlay {
+        top: 0.5rem;
+        left: 0.5rem;
+    }
+
+    .panel-open-btn {
+        top: 0.5rem;
+        right: 0.5rem;
+        width: 2.5rem;
+        height: 2.5rem;
+        font-size: 1.25rem;
+    }
+}
+
+/* 手機 (480px 以下) */
+@media (max-width: 480px) {
+    .header {
+        padding: 0.5rem 0.75rem;
+    }
+
+    .logo {
+        font-size: 1.1rem;
+    }
+
+    .btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.8rem;
+    }
+
+    .btn-icon {
+        font-size: 1rem;
+    }
+
+    .control-panel {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .control-panel.collapsed {
+        transform: translateX(100%);
+    }
+
+    /* 顯示開啟按鈕 */
+    .panel-open-btn {
+        display: flex !important;
+    }
+
+    .panel-header {
+        padding: 1rem;
+    }
+
+    .panel-title {
+        font-size: 1rem;
+    }
+
+    .section-title {
+        font-size: 0.8rem;
+    }
+
+    .control-label,
+    .info-item,
+    .checkbox-text {
+        font-size: 0.8rem;
+    }
+
+    /* 增大觸控目標 */
+    .slider::-webkit-slider-thumb {
+        width: 22px;
+        height: 22px;
+    }
+
+    .slider::-moz-range-thumb {
+        width: 22px;
+        height: 22px;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+    }
+
+    .btn-icon-only {
+        width: 2.75rem;
+        height: 2.75rem;
+    }
+}
+
+/* 橫向模式優化 */
+@media (max-height: 500px) and (orientation: landscape) {
+    .header {
+        padding: 0.5rem 1rem;
+    }
+
+    .logo {
+        font-size: 1rem;
+    }
+
+    .panel-content {
+        padding: 1rem;
+    }
+
+    .control-section {
+        margin-bottom: 1rem;
+    }
+}
+
+/* VR/AR Button Styles */
+#VRButton,
+#ARButton {
+    position: absolute !important;
+    bottom: 20px !important;
+    padding: 12px 24px !important;
+    background: linear-gradient(135deg, hsl(260, 80%, 60%), hsl(260, 80%, 45%)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
+    color: white !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.25s !important;
+    box-shadow: 0 4px 12px rgba(138, 43, 226, 0.4) !important;
+    z-index: 100 !important;
+    touch-action: manipulation !important;
+
+}
+
+#VRButton {
+    left: 20px !important;
+
+}
+
+#ARButton {
+    left: 160px !important;
+
+}
+
+#VRButton:hover,
+#ARButton:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 16px rgba(138, 43, 226, 0.5) !important;
+
+}
+
+#VRButton:active,
+#ARButton:active {
+    transform: translateY(0) !important;
+
+}
+
+/* Mobile VR/AR Button Adjustments */
+@media (max-width: 768px) {
+
+    #VRButton,
+    #ARButton {
+        bottom: 80px !important;
+        padding: 14px 20px !important;
+        font-size: 13px !important;
+
+    }
+
+    #VRButton {
+        left: 50% !important;
+        transform: translateX(-110%) !important;
+
+    }
+
+    #ARButton {
+        left: 50% !important;
+        transform: translateX(10%) !important;
+
+    }
+
+
+}
+
+@media (max-width: 480px) {
+
+    #VRButton,
+    #ARButton {
+        bottom: 70px !important;
+        padding: 12px 18px !important;
+        font-size: 12px !important;
+
+    }
+
+
+}
