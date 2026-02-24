@@ -244,8 +244,7 @@ body {
 
 #canvas {
     display: block;
-    width: 100% !important;
-    height: 100% !important;
+    /* DO NOT add width/height here - Three.js renderer.setSize() controls this */
     touch-action: none;
 }
 
@@ -265,6 +264,18 @@ body {
     font-size: 0.875rem;
     color: var(--accent);
     font-weight: 600;
+}
+
+/* Floating VR/AR buttons on canvas (mobile) */
+.canvas-vr-overlay {
+    position: absolute;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.75rem;
+    pointer-events: all;
+    z-index: 10;
 }
 
 /* ==================== Panel Open Button ==================== */

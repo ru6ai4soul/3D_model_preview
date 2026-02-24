@@ -34,7 +34,7 @@
             <div class="logo">
                 <span class="logo-icon">🎨</span>
                 <span class="logo-text">3D 模型預覽器</span>
-                <span class="version">v7.4</span>
+                <span class="version">v7.5</span>
             </div>
             <div class="header-actions">
                 <a href="gallery.html" class="btn btn-secondary">
@@ -62,6 +62,18 @@
                 <!-- Canvas Overlay Info -->
                 <div class="canvas-overlay">
                     <div class="fps-counter" id="fps-counter">FPS: 60</div>
+                </div>
+
+                <!-- Floating VR/AR buttons (always visible on mobile) -->
+                <div class="canvas-vr-overlay" id="canvas-vr-overlay" style="display:none;">
+                    <button id="vr-float-btn" class="btn btn-vr" style="display:none;">
+                        <span class="btn-icon">🥽</span>
+                        <span class="btn-text">VR</span>
+                    </button>
+                    <button id="ar-float-btn" class="btn btn-ar" style="display:none;">
+                        <span class="btn-icon">📱</span>
+                        <span class="btn-text">AR</span>
+                    </button>
                 </div>
             </div>
 
