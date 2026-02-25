@@ -18,7 +18,7 @@
 
 ### 線上版本
 
-訪問：`https://你的用戶名.github.io/3d-model-viewer/`
+訪問：`https://ru6ai4soul.github.io/3D_model_preview/`
 
 ### 本地運行
 
@@ -93,5 +93,5 @@ MIT License
 
 ---
 
-**版本**: v7.1-VR  
-**最後更新**: 2026-02-18
+**版本**: v7.8-VR  
+**最後更新**: 2026-02-25
