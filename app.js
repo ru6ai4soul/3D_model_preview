@@ -213,9 +213,18 @@ function setupVRARButtons() {
                 if (arSession) { await arSession.end(); return; }
 
                 try {
-                    arSession = await navigator.xr.requestSession('immersive-ar', {
-                        requiredFeatures: ['local'],
-                    });
+                    // 先嘗試完整功能，失敗則降級
+                    try {
+                        arSession = await navigator.xr.requestSession('immersive-ar', {
+                            requiredFeatures: ['local'],
+                            optionalFeatures: ['dom-overlay', 'hit-test'],
+                        });
+                    } catch {
+                        // 降級：只用最基本的 viewer 模式
+                        arSession = await navigator.xr.requestSession('immersive-ar', {
+                            requiredFeatures: ['viewer'],
+                        });
+                    }
                     state.renderer.xr.setSession(arSession);
                     arButton.innerHTML = '<span class="btn-icon">❌</span><span class="btn-text">退出 AR</span>';
                     if (floatAR) floatAR.innerHTML = '<span class="btn-icon">❌</span><span class="btn-text">退出 AR</span>';
@@ -226,7 +235,8 @@ function setupVRARButtons() {
                         if (floatAR) floatAR.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR</span>';
                     });
                 } catch (e) {
-                    alert('AR 啟動失敗: ' + e.message);
+                    console.error('AR 啟動失敗:', e);
+                    alert('AR 啟動失敗\n\n原因: ' + e.message + '\n\n請確認:\n1. 已安裝 Google Play Services for AR\n2. 使用 Chrome 瀏覽器\n3. 裝置支援 ARCore');
                 }
             };
 
@@ -880,6 +890,11 @@ function renderStereo() {
     const halfW = Math.floor(W / 2);
     const eyeSep = 0.032; // 每眼偏移 32mm
 
+    // 重要：每眼的 aspect = halfW / H
+    const eyeAspect = halfW / H;
+    camera.aspect = eyeAspect;
+    camera.updateProjectionMatrix();
+
     renderer.setScissorTest(true);
 
     // 計算相機右方向向量
@@ -1068,22 +1083,34 @@ let deviceControls = null;
 function enterStereoMode() {
     stereoActive = true;
 
-    // 全螢幕（整頁，確保橫向正確）
+    // 全螢幕
     const el = document.documentElement;
-    if (el.requestFullscreen) el.requestFullscreen();
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    const doFullscreen = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (doFullscreen) doFullscreen.call(el);
 
-    // 調整渲染尺寸為全螢幕
-    const w = window.screen.width;
-    const h = window.screen.height;
-    state.renderer.setSize(Math.max(w, h), Math.min(w, h));
+    // 等全螢幕生效後再調整尺寸（fullscreenchange 事件）
+    const onFS = () => {
+        document.removeEventListener('fullscreenchange', onFS);
+        document.removeEventListener('webkitfullscreenchange', onFS);
 
-    // 啟用陀螺儀控制
+        // 取橫向螢幕尺寸
+        const sw = window.screen.width;
+        const sh = window.screen.height;
+        const landscapeW = Math.max(sw, sh);
+        const landscapeH = Math.min(sw, sh);
+
+        state.renderer.setSize(landscapeW, landscapeH);
+        // 注意: renderStereo() 會再設定每眼正確的 aspect，這裡只需設初始
+        state.camera.aspect = (landscapeW / 2) / landscapeH;
+        state.camera.updateProjectionMatrix();
+    };
+    document.addEventListener('fullscreenchange', onFS);
+    document.addEventListener('webkitfullscreenchange', onFS);
+
+    // 啟用陀螺儀
     if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
-            .then(permissionState => {
-                if (permissionState === 'granted') enableGyroscope();
-            })
+            .then(p => { if (p === 'granted') enableGyroscope(); })
             .catch(console.error);
     } else {
         enableGyroscope();
