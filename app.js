@@ -986,254 +986,105 @@ function setupVRARButtons() {
         document.getElementById('fps-counter').textContent = `FPS: ${fps}`;
     }
 
-    // AR/VR 初始化
-    function initARVR() {
-        const arButton = document.getElementById('ar-button');
-        const vrButton = document.getElementById('vr-button');
 
-        // 設備偵測
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        const isAndroid = /Android/.test(navigator.userAgent);
-        const isMobile = isIOS || isAndroid;
 
-        // -------------------------------------------------------
-        // iOS AR（Quick Look）
-        // -------------------------------------------------------
-        if (isIOS) {
-            arButton.style.display = 'flex';
-            arButton.addEventListener('click', async () => {
-                if (!state.currentModel) { alert('請先載入模型'); return; }
-                try {
-                    arButton.textContent = '轉換中...';
-                    const exporter = new USDZExporter();
-                    const arraybuffer = await exporter.parse(state.currentModel);
-                    const blob = new Blob([arraybuffer], { type: 'model/vnd.usdz+zip' });
-                    const url = URL.createObjectURL(blob);
-                    const anchor = document.createElement('a');
-                    anchor.rel = 'ar';
-                    anchor.href = url;
-                    anchor.download = 'model.usdz';
-                    anchor.click();
-                    arButton.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR 模式</span>';
-                } catch (error) {
-                    console.error('AR 轉換失敗:', error);
-                    alert('AR 功能暫時無法使用');
-                    arButton.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR 模式</span>';
-                }
-            });
-        }
 
-        // -------------------------------------------------------
-        // Android AR（WebXR immersive-ar）- 直接使用 Session API，避免創建額外按鈕
-        // -------------------------------------------------------
-        if (isAndroid && navigator.xr) {
-            navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
-                if (supported) {
-                    arButton.style.display = 'flex';
-                    let arSession = null;
+// 進入立體 VR 模式（Cardboard）
+let stereoActive = false;
+let stereoEffect = null;
+let deviceControls = null;
 
-                    arButton.addEventListener('click', async () => {
-                        if (!state.currentModel) { alert('請先載入模型'); return; }
+function enterStereoMode() {
+    stereoActive = true;
 
-                        if (arSession) {
-                            // 退出 AR
-                            await arSession.end();
-                            return;
-                        }
+    // 全螢幕
+    const el = document.documentElement;
+    const doFullscreen = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (doFullscreen) doFullscreen.call(el);
 
-                        try {
-                            arSession = await navigator.xr.requestSession('immersive-ar', {
-                                requiredFeatures: ['local'],
-                                optionalFeatures: ['hit-test', 'dom-overlay'],
-                            });
-                            state.renderer.xr.setSession(arSession);
-                            arButton.innerHTML = '<span class="btn-icon">❌</span><span class="btn-text">退出 AR</span>';
+    // 等全螢幕生效後再調整尺寸（fullscreenchange 事件）
+    const onFS = () => {
+        document.removeEventListener('fullscreenchange', onFS);
+        document.removeEventListener('webkitfullscreenchange', onFS);
 
-                            arSession.addEventListener('end', () => {
-                                arSession = null;
-                                state.renderer.xr.setSession(null);
-                                arButton.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR 模式</span>';
-                            });
-                        } catch (e) {
-                            console.error('AR 啟動失敗:', e);
-                            alert('AR 啟動失敗: ' + e.message);
-                        }
-                    });
-                }
-            });
-        }
+        // 取橫向螢幕尺寸
+        const sw = window.screen.width;
+        const sh = window.screen.height;
+        const landscapeW = Math.max(sw, sh);
+        const landscapeH = Math.min(sw, sh);
 
-        // -------------------------------------------------------
-        // Cardboard VR（手機立體模式）
-        // -------------------------------------------------------
-        if (isMobile) {
-            vrButton.style.display = 'flex';
-            let stereoMode = false;
-
-            vrButton.addEventListener('click', () => {
-                if (!state.currentModel) { alert('請先載入模型'); return; }
-
-                stereoMode = !stereoMode;
-
-                if (stereoMode) {
-                    // 計算合適的相機距離：讓模型填滿畫面約 60%
-                    if (state.currentModel) {
-                        const box = new THREE.Box3().setFromObject(state.currentModel);
-                        const center = box.getCenter(new THREE.Vector3());
-                        const size = box.getSize(new THREE.Vector3());
-                        const maxDim = Math.max(size.x, size.y, size.z);
-                        const distance = maxDim * 2.5; // 讓模型佔畫面約 40%
-                        const direction = state.camera.position.clone().sub(center).normalize();
-                        state.camera.position.copy(center).addScaledVector(direction, distance);
-                        state.controls.target.copy(center);
-                    }
-                    state.camera.fov = 80;
-                    state.camera.updateProjectionMatrix();
-                    enterStereoMode();
-                    vrButton.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
-                } else {
-                    exitStereoMode();
-                    vrButton.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
-                }
-            });
-        }
-
-        // -------------------------------------------------------
-        // 桌面 WebXR VR（直接使用 Session API，避免創建額外按鈕）
-        // -------------------------------------------------------
-        if (navigator.xr && !isMobile) {
-            navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
-                if (supported) {
-                    vrButton.style.display = 'flex';
-                    let vrSession = null;
-
-                    vrButton.addEventListener('click', async () => {
-                        if (!state.currentModel) { alert('請先載入模型'); return; }
-
-                        if (vrSession) {
-                            await vrSession.end();
-                            return;
-                        }
-
-                        try {
-                            vrSession = await navigator.xr.requestSession('immersive-vr', {
-                                optionalFeatures: ['local-floor', 'bounded-floor'],
-                            });
-                            state.renderer.xr.setSession(vrSession);
-                            vrButton.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
-
-                            vrSession.addEventListener('end', () => {
-                                vrSession = null;
-                                state.renderer.xr.setSession(null);
-                                vrButton.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
-                            });
-                        } catch (e) {
-                            console.error('VR 啟動失敗:', e);
-                            alert('VR 啟動失敗: ' + e.message);
-                        }
-                    });
-                }
-            });
-        }
-    }
-
-    // 進入立體 VR 模式（Cardboard）
-    let stereoActive = false;
-    let stereoEffect = null;
-    let deviceControls = null;
-
-    function enterStereoMode() {
-        stereoActive = true;
-
-        // 全螢幕
-        const el = document.documentElement;
-        const doFullscreen = el.requestFullscreen || el.webkitRequestFullscreen;
-        if (doFullscreen) doFullscreen.call(el);
-
-        // 等全螢幕生效後再調整尺寸（fullscreenchange 事件）
-        const onFS = () => {
-            document.removeEventListener('fullscreenchange', onFS);
-            document.removeEventListener('webkitfullscreenchange', onFS);
-
-            // 取橫向螢幕尺寸
-            const sw = window.screen.width;
-            const sh = window.screen.height;
-            const landscapeW = Math.max(sw, sh);
-            const landscapeH = Math.min(sw, sh);
-
-            state.renderer.setSize(landscapeW, landscapeH);
-            // 注意: renderStereo() 會再設定每眼正確的 aspect，這裡只需設初始
-            state.camera.aspect = (landscapeW / 2) / landscapeH;
-            state.camera.updateProjectionMatrix();
-        };
-        document.addEventListener('fullscreenchange', onFS);
-        document.addEventListener('webkitfullscreenchange', onFS);
-
-        // 啟用陀螺儀
-        if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission()
-                .then(p => { if (p === 'granted') enableGyroscope(); })
-                .catch(console.error);
-        } else {
-            enableGyroscope();
-        }
-
-        // 鎖定橫向
-        if (screen.orientation && screen.orientation.lock) {
-            screen.orientation.lock('landscape').catch(() => { });
-        }
-    }
-
-    // 啟用陀螺儀控制
-    function enableGyroscope() {
-        window.addEventListener('deviceorientation', handleOrientation, true);
-    }
-
-    // 處理陀螺儀數據
-    let alpha = 0, beta = 0, gamma = 0;
-    function handleOrientation(event) {
-        alpha = event.alpha || 0;  // Z 軸旋轉
-        beta = event.beta || 0;    // X 軸旋轉
-        gamma = event.gamma || 0;  // Y 軸旋轉
-
-        // 將陀螺儀數據應用到相機
-        if (state.camera && stereoActive) {
-            // 轉換為弧度
-            const alphaRad = alpha * (Math.PI / 180);
-            const betaRad = beta * (Math.PI / 180);
-            const gammaRad = gamma * (Math.PI / 180);
-
-            // 更新相機旋轉
-            state.camera.rotation.set(betaRad, alphaRad, -gammaRad, 'YXZ');
-        }
-    }
-
-    // 退出立體 VR 模式
-    function exitStereoMode() {
-        stereoActive = false;
-
-        // 退出全螢幕
-        if (document.exitFullscreen) document.exitFullscreen();
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-
-        // 停用陀螺儀
-        window.removeEventListener('deviceorientation', handleOrientation, true);
-
-        // 恢復正常渲染 - 使用容器實際尺寸
-        state.renderer.setScissorTest(false);
-        const container = document.getElementById('canvas-container');
-        const w = container.offsetWidth || window.innerWidth;
-        const h = container.offsetHeight || (window.innerHeight - 70);
-        state.camera.fov = 45;
-        state.camera.aspect = w / h;
+        state.renderer.setSize(landscapeW, landscapeH);
+        // 注意: renderStereo() 會再設定每眼正確的 aspect，這裡只需設初始
+        state.camera.aspect = (landscapeW / 2) / landscapeH;
         state.camera.updateProjectionMatrix();
-        state.renderer.setSize(w, h, false);
-        state.renderer.setViewport(0, 0, w, h);
+    };
+    document.addEventListener('fullscreenchange', onFS);
+    document.addEventListener('webkitfullscreenchange', onFS);
 
-        // 重置相機旋轉
-        state.camera.rotation.set(0, 0, 0);
+    // 啟用陀螺儀
+    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+            .then(p => { if (p === 'granted') enableGyroscope(); })
+            .catch(console.error);
+    } else {
+        enableGyroscope();
     }
 
-    // Initialize the application
-    init();
+    // 鎖定橫向
+    if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => { });
+    }
 }
+
+// 啟用陀螺儀控制
+function enableGyroscope() {
+    window.addEventListener('deviceorientation', handleOrientation, true);
+}
+
+// 處理陀螺儀數據
+let alpha = 0, beta = 0, gamma = 0;
+function handleOrientation(event) {
+    alpha = event.alpha || 0;  // Z 軸旋轉
+    beta = event.beta || 0;    // X 軸旋轉
+    gamma = event.gamma || 0;  // Y 軸旋轉
+
+    // 將陀螺儀數據應用到相機
+    if (state.camera && stereoActive) {
+        // 轉換為弧度
+        const alphaRad = alpha * (Math.PI / 180);
+        const betaRad = beta * (Math.PI / 180);
+        const gammaRad = gamma * (Math.PI / 180);
+
+        // 更新相機旋轉
+        state.camera.rotation.set(betaRad, alphaRad, -gammaRad, 'YXZ');
+    }
+}
+
+// 退出立體 VR 模式
+function exitStereoMode() {
+    stereoActive = false;
+
+    // 退出全螢幕
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+
+    // 停用陀螺儀
+    window.removeEventListener('deviceorientation', handleOrientation, true);
+
+    // 恢復正常渲染 - 使用容器實際尺寸
+    state.renderer.setScissorTest(false);
+    const container = document.getElementById('canvas-container');
+    const w = container.offsetWidth || window.innerWidth;
+    const h = container.offsetHeight || (window.innerHeight - 70);
+    state.camera.fov = 45;
+    state.camera.aspect = w / h;
+    state.camera.updateProjectionMatrix();
+    state.renderer.setSize(w, h, false);
+    state.renderer.setViewport(0, 0, w, h);
+
+    // 重置相機旋轉
+    state.camera.rotation.set(0, 0, 0);
+}
+
+// Initialize the application
+init();
