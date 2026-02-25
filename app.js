@@ -127,6 +127,9 @@ function init() {
     state.renderer.setAnimationLoop(animate);
 }
 
+// Global XR session tracker (prevents "already active XRSession" errors)
+let activeXRSession = null;
+
 // Setup VR/AR Buttons
 function setupVRARButtons() {
     const arButton = document.getElementById('ar-button');
@@ -134,8 +137,6 @@ function setupVRARButtons() {
     if (!arButton || !vrButton) return;
 
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    const isAndroid = /Android/.test(navigator.userAgent);
-    const isMobile = isIOS || isAndroid;
 
     const floatVR = document.getElementById('vr-float-btn');
     const floatAR = document.getElementById('ar-float-btn');
@@ -147,23 +148,74 @@ function setupVRARButtons() {
         if (floatOverlay) floatOverlay.style.display = 'flex';
     }
 
-    // Position camera to properly frame the loaded model
-    function frameModel() {
+    // Scale/restore model for XR modes
+    let savedScale = null, savedPos = null;
+
+    // AR: scale to 0.3m, place bottom at floor level, 1.5m in front
+    function scaleForAR() {
         if (!state.currentModel) return;
         const box = new THREE.Box3().setFromObject(state.currentModel);
-        const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const dir = state.camera.position.clone().sub(center).normalize();
-        state.camera.position.copy(center).addScaledVector(dir, maxDim * 2.5);
-        state.camera.position.y = center.y + maxDim * 0.5;
-        state.controls.target.copy(center);
-        state.controls.update();
+        if (maxDim === 0) return;
+        savedScale = state.currentModel.scale.clone();
+        savedPos = state.currentModel.position.clone();
+        const sf = 0.3 / maxDim;                  // target: 0.3m max dimension
+        state.currentModel.scale.set(sf, sf, sf);
+        // bottom of model at y=0 (floor), 1.5m in front
+        // center offset: model center is at center.y*sf above bottom
+        const bottomY = -box.min.y * sf;           // lift so min.y touches y=0
+        state.currentModel.position.set(-center.x * sf, bottomY, -1.5);
     }
 
-    // --------------------------------------------------
-    // WebXR AR (Android Chrome with ARCore)
-    // --------------------------------------------------
+    // VR: scale to 0.5m, center at eye height (1.2m), 2m in front
+    function scaleForVR() {
+        if (!state.currentModel) return;
+        const box = new THREE.Box3().setFromObject(state.currentModel);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        if (maxDim === 0) return;
+        savedScale = state.currentModel.scale.clone();
+        savedPos = state.currentModel.position.clone();
+        const sf = 0.5 / maxDim;                  // target: 0.5m max dimension
+        state.currentModel.scale.set(sf, sf, sf);
+        // center of model at eye height 1.2m, 2m in front
+        state.currentModel.position.set(-center.x * sf, 1.2 - center.y * sf, -2);
+    }
+
+    function restoreModelFromXR() {
+        if (!state.currentModel || !savedScale) return;
+        state.currentModel.scale.copy(savedScale);
+        state.currentModel.position.copy(savedPos);
+        savedScale = null;
+        savedPos = null;
+    }
+
+    async function endActiveSession() {
+        if (activeXRSession) {
+            try { await activeXRSession.end(); } catch (_) { /* already ended */ }
+            activeXRSession = null;
+        }
+    }
+
+    function restoreAfterXR(prevBg) {
+        restoreModelFromXR();
+        if (prevBg !== undefined) {
+            state.scene.background = prevBg;
+            state.renderer.setClearAlpha(1);
+        }
+        if (state.gridHelper) state.gridHelper.visible = true;
+        const cont = document.getElementById('canvas-container');
+        const w = cont.offsetWidth || window.innerWidth;
+        const h = cont.offsetHeight || (window.innerHeight - 70);
+        state.camera.aspect = w / h;
+        state.camera.updateProjectionMatrix();
+        state.renderer.setSize(w, h, false);
+    }
+
+    // ── WebXR AR ──────────────────────────────────────────
     if (navigator.xr) {
         navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
             if (!supported) return;
@@ -172,23 +224,16 @@ function setupVRARButtons() {
             const doAR = async () => {
                 if (!state.currentModel) { alert('請先載入模型'); return; }
 
-                const active = state.renderer.xr.getSession?.() || null;
-                if (active) {
-                    try { await active.end(); } catch (e) { console.error(e); }
-                    return;
-                }
+                // Already in XR? → exit
+                if (activeXRSession) { await endActiveSession(); return; }
 
                 try {
-                    let session;
-                    let refSpaceType = 'local';
-
-                    // Try 'local' reference space first, fall back to 'viewer'
+                    let session, refSpaceType = 'local';
                     try {
                         session = await navigator.xr.requestSession('immersive-ar', {
                             requiredFeatures: ['local'],
                             optionalFeatures: ['hit-test'],
                         });
-                        refSpaceType = 'local';
                     } catch {
                         session = await navigator.xr.requestSession('immersive-ar', {
                             requiredFeatures: ['viewer'],
@@ -196,31 +241,34 @@ function setupVRARButtons() {
                         refSpaceType = 'viewer';
                     }
 
-                    // MUST set reference space type BEFORE setSession
+                    activeXRSession = session;
                     state.renderer.xr.setReferenceSpaceType(refSpaceType);
 
-                    // Transparent background for AR camera passthrough
                     const prevBg = state.scene.background;
                     state.scene.background = null;
                     state.renderer.setClearAlpha(0);
+                    if (state.gridHelper) state.gridHelper.visible = false;
+
+                    // Auto-scale: 0.3m tall, bottom at floor, 1.5m in front
+                    scaleForAR();
 
                     await state.renderer.xr.setSession(session);
-                    const exitLabel = '<span class="btn-icon">❌</span><span class="btn-text">退出 AR</span>';
-                    arButton.innerHTML = exitLabel;
-                    if (floatAR) floatAR.innerHTML = exitLabel;
+
+                    arButton.innerHTML = '<span class="btn-icon">❌</span><span class="btn-text">退出 AR</span>';
+                    if (floatAR) floatAR.innerHTML = '<span class="btn-icon">❌</span><span class="btn-text">退出 AR</span>';
 
                     session.addEventListener('end', () => {
-                        state.scene.background = prevBg;
-                        state.renderer.setClearAlpha(1);
-                        // Reset reference space to default for VR
-                        state.renderer.xr.setReferenceSpaceType('local-floor');
-                        const normalLabel = '<span class="btn-icon">📱</span><span class="btn-text">AR 模式</span>';
-                        arButton.innerHTML = normalLabel;
+                        activeXRSession = null;
+                        restoreAfterXR(prevBg);
+                        arButton.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR 模式</span>';
                         if (floatAR) floatAR.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR</span>';
                     });
+
                 } catch (e) {
+                    activeXRSession = null;
                     console.error('AR 啟動失敗:', e);
-                    alert('AR 啟動失敗\n\n原因: ' + e.message);
+                    alert('AR 啟動失敗\n\n原因: ' + e.message +
+                        '\n\n請確認:\n1. 已安裝 Google Play Services for AR\n2. 使用 Chrome 瀏覽器');
                 }
             };
 
@@ -229,82 +277,40 @@ function setupVRARButtons() {
         });
     }
 
-    // --------------------------------------------------
-    // WebXR VR (Android / Desktop)
-    // Falls back to Cardboard stereo on iOS
-    // --------------------------------------------------
+    // ── WebXR VR · Cardboard fallback on iOS ─────────────
     if (navigator.xr) {
         navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
             if (supported) {
                 showBtn(vrButton, floatVR);
 
-                // Save/restore model transform for VR scaling
-                let vrModelSavedScale = null;
-                let vrModelSavedPos = null;
-
-                function scaleModelForVR() {
-                    if (!state.currentModel) return;
-                    const box = new THREE.Box3().setFromObject(state.currentModel);
-                    const center = box.getCenter(new THREE.Vector3());
-                    const size = box.getSize(new THREE.Vector3());
-                    const maxDim = Math.max(size.x, size.y, size.z);
-
-                    // Save original transform
-                    vrModelSavedScale = state.currentModel.scale.clone();
-                    vrModelSavedPos = state.currentModel.position.clone();
-
-                    // Scale so the model fits in ~0.4m (comfortable VR size)
-                    const targetSize = 0.4;
-                    const scaleFactor = targetSize / maxDim;
-                    state.currentModel.scale.multiplyScalar(scaleFactor);
-
-                    // Position 1.5m in front, at eye height
-                    state.currentModel.position.set(0, 1.2, -1.5);
-                }
-
-                function restoreModelFromVR() {
-                    if (!state.currentModel || !vrModelSavedScale) return;
-                    state.currentModel.scale.copy(vrModelSavedScale);
-                    state.currentModel.position.copy(vrModelSavedPos);
-                    vrModelSavedScale = null;
-                    vrModelSavedPos = null;
-                }
-
                 const doVR = async () => {
                     if (!state.currentModel) { alert('請先載入模型'); return; }
 
-                    const active = state.renderer.xr.getSession?.() || null;
-                    if (active) {
-                        try { await active.end(); } catch (e) { console.error(e); }
-                        return;
-                    }
+                    // Already in XR? → exit
+                    if (activeXRSession) { await endActiveSession(); return; }
 
-                    scaleModelForVR();
+                    // Auto-scale: 0.5m tall, center at eye height, 2m in front
+                    scaleForVR();
 
                     try {
                         const session = await navigator.xr.requestSession('immersive-vr', {
                             optionalFeatures: ['local-floor', 'bounded-floor'],
                         });
+                        activeXRSession = session;
                         await state.renderer.xr.setSession(session);
-                        const exitLabel = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
-                        vrButton.innerHTML = exitLabel;
-                        if (floatVR) floatVR.innerHTML = exitLabel;
+
+                        vrButton.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
+                        if (floatVR) floatVR.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
 
                         session.addEventListener('end', () => {
-                            restoreModelFromVR();
-                            const normalLabel = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
-                            vrButton.innerHTML = normalLabel;
+                            activeXRSession = null;
+                            restoreAfterXR();
+                            vrButton.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
                             if (floatVR) floatVR.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
-                            // Restore canvas size
-                            const container = document.getElementById('canvas-container');
-                            const w = container.offsetWidth || window.innerWidth;
-                            const h = container.offsetHeight || (window.innerHeight - 70);
-                            state.camera.aspect = w / h;
-                            state.camera.updateProjectionMatrix();
-                            state.renderer.setSize(w, h, false);
                         });
                     } catch (e) {
-                        restoreModelFromVR();
+                        activeXRSession = null;
+                        restoreModelFromXR(); // restoreAfterXR() handles this too
                         console.error('VR 啟動失敗:', e);
                         alert('VR 啟動失敗: ' + e.message);
                     }
@@ -314,30 +320,24 @@ function setupVRARButtons() {
                 if (floatVR) floatVR.addEventListener('click', doVR);
 
             } else if (isIOS) {
-                // iOS Safari: WebXR VR not supported → Cardboard stereo
+                // iOS Safari: Cardboard stereo fallback
                 showBtn(vrButton, floatVR);
                 let inVR = false;
-
                 const doCardboard = () => {
                     if (!state.currentModel) { alert('請先載入模型'); return; }
                     inVR = !inVR;
-
                     if (inVR) {
-                        frameModel();
                         state.camera.fov = 80;
                         state.camera.updateProjectionMatrix();
                         enterStereoMode();
-                        const exitLabel = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
-                        vrButton.innerHTML = exitLabel;
-                        if (floatVR) floatVR.innerHTML = exitLabel;
+                        vrButton.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
+                        if (floatVR) floatVR.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
                     } else {
                         exitStereoMode();
-                        const normalLabel = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
-                        vrButton.innerHTML = normalLabel;
+                        vrButton.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
                         if (floatVR) floatVR.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
                     }
                 };
-
                 vrButton.addEventListener('click', doCardboard);
                 if (floatVR) floatVR.addEventListener('click', doCardboard);
             }
