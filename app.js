@@ -879,7 +879,7 @@ function setupEventListeners() {
     }
 
     // AR/VR 功能
-    initARVR();
+    setupVRARButtons();
 
     // Background color control
     document.getElementById('bg-color').addEventListener('input', (e) => {
