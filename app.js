@@ -151,38 +151,52 @@ function setupVRARButtons() {
     // Scale/restore model for XR modes
     let savedScale = null, savedPos = null;
 
-    // AR: scale to 0.3m, place bottom at floor level, 1.5m in front
+    // Shared XR scale helper
+    // worldMaxDim comes from Box3 which already includes model's current scale.
+    // So new_scale = currentScale * (targetSize / worldMaxDim)
+    function computeXRScale(box, targetSizeM) {
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        if (maxDim === 0) return null;
+        const curS = state.currentModel.scale.x;   // assume uniform scale
+        return curS * (targetSizeM / maxDim);       // correct relative scale
+    }
+
+    // AR: scale to 0.5m, bottom at floor (y=0), 0.8m in front — closer & bigger
     function scaleForAR() {
         if (!state.currentModel) return;
         const box = new THREE.Box3().setFromObject(state.currentModel);
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim === 0) return;
+        const sf = computeXRScale(box, 0.5);
+        if (!sf) return;
         savedScale = state.currentModel.scale.clone();
         savedPos = state.currentModel.position.clone();
-        const sf = 0.3 / maxDim;                  // target: 0.3m max dimension
+        const center = box.getCenter(new THREE.Vector3());
         state.currentModel.scale.set(sf, sf, sf);
-        // bottom of model at y=0 (floor), 1.5m in front
-        // center offset: model center is at center.y*sf above bottom
-        const bottomY = -box.min.y * sf;           // lift so min.y touches y=0
-        state.currentModel.position.set(-center.x * sf, bottomY, -1.5);
+        const scaleRatio = sf / savedScale.x;
+        const bottomY = -box.min.y * scaleRatio;
+        state.currentModel.position.set(
+            -center.x * scaleRatio,
+            bottomY,
+            -0.8      // 0.8m in front — close enough to see clearly
+        );
     }
 
-    // VR: scale to 0.5m, center at eye height (1.2m), 2m in front
+    // VR: scale to 0.5m, model center at eye height 1.2m, 2m in front
     function scaleForVR() {
         if (!state.currentModel) return;
         const box = new THREE.Box3().setFromObject(state.currentModel);
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim === 0) return;
+        const sf = computeXRScale(box, 0.5);
+        if (!sf) return;
         savedScale = state.currentModel.scale.clone();
         savedPos = state.currentModel.position.clone();
-        const sf = 0.5 / maxDim;                  // target: 0.5m max dimension
+        const center = box.getCenter(new THREE.Vector3());
+        const scaleRatio = sf / savedScale.x;
         state.currentModel.scale.set(sf, sf, sf);
-        // center of model at eye height 1.2m, 2m in front
-        state.currentModel.position.set(-center.x * sf, 1.2 - center.y * sf, -2);
+        state.currentModel.position.set(
+            -center.x * scaleRatio,
+            1.2 - center.y * scaleRatio,  // model center → eye height 1.2m
+            -2                             // 2m in front
+        );
     }
 
     function restoreModelFromXR() {
