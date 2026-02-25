@@ -244,7 +244,8 @@ body {
 
 #canvas {
     display: block;
-    /* DO NOT add width/height here - Three.js renderer.setSize() controls this */
+    width: 100%;
+    height: 100%;
     touch-action: none;
 }
 
