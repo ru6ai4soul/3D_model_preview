@@ -151,52 +151,47 @@ function setupVRARButtons() {
     // Scale/restore model for XR modes
     let savedScale = null, savedPos = null;
 
-    // Shared XR scale helper
-    // worldMaxDim comes from Box3 which already includes model's current scale.
-    // So new_scale = currentScale * (targetSize / worldMaxDim)
-    function computeXRScale(box, targetSizeM) {
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim === 0) return null;
-        const curS = state.currentModel.scale.x;   // assume uniform scale
-        return curS * (targetSizeM / maxDim);       // correct relative scale
-    }
+    // Scale model for XR: scale THEN re-measure bounding box for correct placement.
+    // Two-step is mathematically foolproof regardless of model's current transform.
 
-    // AR: scale to 0.5m, bottom at floor (y=0), 0.8m in front — closer & bigger
+    // AR: 0.5m tall, bottom at y=0 (floor), 0.8m in front
     function scaleForAR() {
         if (!state.currentModel) return;
-        const box = new THREE.Box3().setFromObject(state.currentModel);
-        const sf = computeXRScale(box, 0.5);
-        if (!sf) return;
+        const box0 = new THREE.Box3().setFromObject(state.currentModel);
+        const size0 = box0.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size0.x, size0.y, size0.z);
+        if (!maxDim) return;
         savedScale = state.currentModel.scale.clone();
         savedPos = state.currentModel.position.clone();
-        const center = box.getCenter(new THREE.Vector3());
+        // Step 1: apply scale
+        const sf = state.currentModel.scale.x * (0.5 / maxDim);
         state.currentModel.scale.set(sf, sf, sf);
-        const scaleRatio = sf / savedScale.x;
-        const bottomY = -box.min.y * scaleRatio;
-        state.currentModel.position.set(
-            -center.x * scaleRatio,
-            bottomY,
-            -0.8      // 0.8m in front — close enough to see clearly
-        );
+        // Step 2: re-measure AFTER scaling → correct positions
+        const box1 = new THREE.Box3().setFromObject(state.currentModel);
+        const c1 = box1.getCenter(new THREE.Vector3());
+        state.currentModel.position.x += (0 - c1.x);      // center horizontally
+        state.currentModel.position.y += (0 - box1.min.y); // sit on floor y=0
+        state.currentModel.position.z += (-0.8 - c1.z);      // 0.8m in front
     }
 
-    // VR: scale to 0.5m, model center at eye height 1.2m, 2m in front
+    // VR: 0.5m tall, model center at eye height 1.6m, 2m in front
     function scaleForVR() {
         if (!state.currentModel) return;
-        const box = new THREE.Box3().setFromObject(state.currentModel);
-        const sf = computeXRScale(box, 0.5);
-        if (!sf) return;
+        const box0 = new THREE.Box3().setFromObject(state.currentModel);
+        const size0 = box0.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size0.x, size0.y, size0.z);
+        if (!maxDim) return;
         savedScale = state.currentModel.scale.clone();
         savedPos = state.currentModel.position.clone();
-        const center = box.getCenter(new THREE.Vector3());
-        const scaleRatio = sf / savedScale.x;
+        // Step 1: apply scale
+        const sf = state.currentModel.scale.x * (0.5 / maxDim);
         state.currentModel.scale.set(sf, sf, sf);
-        state.currentModel.position.set(
-            -center.x * scaleRatio,
-            1.2 - center.y * scaleRatio,  // model center → eye height 1.2m
-            -2                             // 2m in front
-        );
+        // Step 2: re-measure AFTER scaling
+        const box1 = new THREE.Box3().setFromObject(state.currentModel);
+        const c1 = box1.getCenter(new THREE.Vector3());
+        state.currentModel.position.x += (0 - c1.x); // center horizontally
+        state.currentModel.position.y += (1.6 - c1.y); // center at standing eye height
+        state.currentModel.position.z += (-2 - c1.z); // 2m in front
     }
 
     function restoreModelFromXR() {
@@ -212,6 +207,13 @@ function setupVRARButtons() {
             try { await activeXRSession.end(); } catch (_) { /* already ended */ }
             activeXRSession = null;
         }
+    }
+
+    // Cooldown flag: Chrome may still hold old session briefly after end event fires
+    let xrCoolingDown = false;
+    function startXRCooldown(ms = 1000) {
+        xrCoolingDown = true;
+        setTimeout(() => { xrCoolingDown = false; }, ms);
     }
 
     function restoreAfterXR(prevBg) {
@@ -237,6 +239,7 @@ function setupVRARButtons() {
 
             const doAR = async () => {
                 if (!state.currentModel) { alert('請先載入模型'); return; }
+                if (xrCoolingDown) return; // wait for previous session to fully release
 
                 // Already in XR? → exit
                 if (activeXRSession) { await endActiveSession(); return; }
@@ -257,13 +260,13 @@ function setupVRARButtons() {
 
                     activeXRSession = session;
                     state.renderer.xr.setReferenceSpaceType(refSpaceType);
+                    if (state.controls) state.controls.enabled = false; // disable orbit while XR
 
                     const prevBg = state.scene.background;
                     state.scene.background = null;
                     state.renderer.setClearAlpha(0);
                     if (state.gridHelper) state.gridHelper.visible = false;
 
-                    // Auto-scale: 0.3m tall, bottom at floor, 1.5m in front
                     scaleForAR();
 
                     await state.renderer.xr.setSession(session);
@@ -273,6 +276,8 @@ function setupVRARButtons() {
 
                     session.addEventListener('end', () => {
                         activeXRSession = null;
+                        startXRCooldown(1200); // 1.2s cooldown after session ends
+                        if (state.controls) state.controls.enabled = true;
                         restoreAfterXR(prevBg);
                         arButton.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR 模式</span>';
                         if (floatAR) floatAR.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR</span>';
@@ -281,6 +286,8 @@ function setupVRARButtons() {
                 } catch (e) {
                     activeXRSession = null;
                     console.error('AR 啟動失敗:', e);
+                    // Silently ignore 'already active' (race condition) — Chrome cleans up shortly
+                    if (e.message && e.message.includes('already')) return;
                     alert('AR 啟動失敗\n\n原因: ' + e.message +
                         '\n\n請確認:\n1. 已安裝 Google Play Services for AR\n2. 使用 Chrome 瀏覽器');
                 }
@@ -299,11 +306,11 @@ function setupVRARButtons() {
 
                 const doVR = async () => {
                     if (!state.currentModel) { alert('請先載入模型'); return; }
+                    if (xrCoolingDown) return; // wait for previous session to fully release
 
                     // Already in XR? → exit
                     if (activeXRSession) { await endActiveSession(); return; }
 
-                    // Auto-scale: 0.5m tall, center at eye height, 2m in front
                     scaleForVR();
 
                     try {
@@ -311,6 +318,8 @@ function setupVRARButtons() {
                             optionalFeatures: ['local-floor', 'bounded-floor'],
                         });
                         activeXRSession = session;
+                        if (state.controls) state.controls.enabled = false;
+
                         await state.renderer.xr.setSession(session);
 
                         vrButton.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
@@ -318,14 +327,19 @@ function setupVRARButtons() {
 
                         session.addEventListener('end', () => {
                             activeXRSession = null;
+                            startXRCooldown(1200);
+                            if (state.controls) state.controls.enabled = true;
                             restoreAfterXR();
                             vrButton.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
                             if (floatVR) floatVR.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
                         });
                     } catch (e) {
                         activeXRSession = null;
-                        restoreModelFromXR(); // restoreAfterXR() handles this too
+                        restoreModelFromXR();
+                        if (state.controls) state.controls.enabled = true;
                         console.error('VR 啟動失敗:', e);
+                        // Silently ignore 'already active' (race condition)
+                        if (e.message && e.message.includes('already')) return;
                         alert('VR 啟動失敗: ' + e.message);
                     }
                 };
