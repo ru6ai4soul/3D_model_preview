@@ -540,7 +540,9 @@
                 window.location.href = 'index.html';
             } else {
                 // Load model file
-                window.location.href = `index.html?model=${encodeURIComponent(model.file)}`;
+                let url = `index.html?model=${encodeURIComponent(model.file)}`;
+                if (model.usdzFile) url += `&usdz=${encodeURIComponent(model.usdzFile)}`;
+                window.location.href = url;
             }
         }
 

@@ -148,6 +148,31 @@ function setupVRARButtons() {
         if (floatOverlay) floatOverlay.style.display = 'flex';
     }
 
+    // ── iOS Quick Look AR ──────────────────────────────────
+    // Read USDZ file path from URL param (passed by gallery.html)
+    const usdzFile = new URLSearchParams(window.location.search).get('usdz');
+
+    if (isIOS && usdzFile) {
+        // Show AR button — will open Apple Quick Look when tapped
+        showBtn(arButton, floatAR);
+        arButton.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR 預覽</span>';
+        if (floatAR) floatAR.innerHTML = '<span class="btn-icon">📱</span><span class="btn-text">AR</span>';
+
+        // Quick Look requires an <a rel="ar"><img/></a> element to be tapped
+        const qlLink = document.createElement('a');
+        qlLink.rel = 'ar';
+        qlLink.href = usdzFile;
+        const qlImg = document.createElement('img');
+        qlImg.style.cssText = 'width:0;height:0;position:absolute;opacity:0;';
+        qlLink.appendChild(qlImg);
+        document.body.appendChild(qlLink);
+
+        const openQL = (e) => { e.preventDefault(); qlLink.click(); };
+        arButton.addEventListener('click', openQL);
+        if (floatAR) floatAR.addEventListener('click', openQL);
+    }
+
+
     // Scale/restore model for XR modes
     let savedScale = null, savedPos = null;
 

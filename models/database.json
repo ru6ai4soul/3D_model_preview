@@ -17,15 +17,17 @@
     },
     {
       "id": "Cring",
-      "name": "fbx_test",
-      "description": "test",
+      "name": "Ring",
+      "description": "戒指模型 - 支援 Android AR / iOS Quick Look AR",
       "file": "models/ring.glb",
+      "usdzFile": "models/ring.usdz",
       "thumbnail": "thumbnails/68695.jpg",
       "password": "aaa",
       "category": "產品",
       "tags": [
         "3D",
-        "設計"
+        "設計",
+        "AR"
       ],
       "uploadDate": "2026-02-13"
     }
