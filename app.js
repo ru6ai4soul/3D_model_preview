@@ -853,6 +853,28 @@ function updatePlayButtonState(isPlaying) {
 }
 
 function setupEventListeners() {
+    // ── Page visibility / iOS Quick Look resume ───────────
+    // When page returns from background (Quick Look, home button, etc.),
+    // drain the accumulated clock delta and restart any stopped animation.
+    function onPageResume() {
+        state.clock.getDelta(); // discard accumulated delta — prevents timeline jump
+        if (state.mixer && state.currentAction) {
+            // Reset mixer time so it doesn't jump forward
+            // Re-play if action has stopped (finished LoopOnce or paused by OS)
+            if (!state.currentAction.isRunning()) {
+                state.currentAction.reset().play();
+                updatePlayButtonState(true);
+            }
+        }
+    }
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) onPageResume();
+    });
+    // BFCache restore (iOS Safari back/forward navigation)
+    window.addEventListener('pageshow', (e) => {
+        if (e.persisted) onPageResume();
+    });
+
     document.getElementById('load-model-btn').addEventListener('click', () => {
         document.getElementById('file-input').click();
     }); document.getElementById('file-input').addEventListener('change', (e) => { if (e.target.files[0]) loadModel(e.target.files[0]); });
