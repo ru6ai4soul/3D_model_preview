@@ -979,7 +979,9 @@ window.togglePanel = function () {
 };
 
 function animate() {
-    const delta = state.clock.getDelta();
+    // Cap delta to 100ms: prevents animation jump when page returns from background
+    // (e.g. after iOS Quick Look, Android AR/VR session)
+    const delta = Math.min(state.clock.getDelta(), 0.1);
 
     if (state.mixer) state.mixer.update(delta);
 
