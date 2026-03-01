@@ -1166,134 +1166,196 @@ function updateFPS(delta) {
 
 
 
-// 進入立體 VR 模式（Cardboard）
+// ════════════════════════════════════════════════════════
+// Cardboard VR (iOS / fallback) — stereo split + gyroscope
+// ════════════════════════════════════════════════════════
 let stereoActive = false;
 let stereoEffect = null;
 let deviceControls = null;
 
+// --- Gyroscope state ---
+let _alphaOffset = 0;
+let _firstAlpha = null;
+const _zee = new THREE.Vector3(0, 0, 1);
+const _q1  = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -90 deg X
+let _savedCamPos = null;
+let _savedCamTarget = null;
+
 function enterStereoMode() {
     stereoActive = true;
+    _firstAlpha = null;
 
-    // Disable OrbitControls — gyroscope will control camera
+    // Disable OrbitControls
     if (state.controls) state.controls.enabled = false;
 
-    // Hide UI panels for cleaner view
+    // Save camera state
+    _savedCamPos = state.camera.position.clone();
+    _savedCamTarget = state.controls ? state.controls.target.clone() : new THREE.Vector3();
+
+    // Position camera looking at model center
+    if (state.currentModel) {
+        const box = new THREE.Box3().setFromObject(state.currentModel);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        state.camera.position.copy(center).add(new THREE.Vector3(0, 0, maxDim * 2));
+    }
+    state.camera.fov = 80;
+    state.camera.updateProjectionMatrix();
+
+    // Hide UI
     const panel = document.querySelector('.control-panel');
     const header = document.querySelector('.header');
     if (panel) panel.style.display = 'none';
     if (header) header.style.display = 'none';
 
-    // Make canvas container fill entire viewport
+    // Canvas container: fill entire screen
     const container = document.getElementById('canvas-container');
     if (container) {
-        container.style.cssText = 'position:fixed!important;top:0;left:0;width:100vw;height:100vh;z-index:10000;background:#000;';
-    }
-    const canvas = document.getElementById('canvas');
-    if (canvas) {
-        canvas.style.cssText = 'display:block;width:100vw;height:100vh;';
+        container.dataset.origStyle = container.getAttribute('style') || '';
+        container.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:10000;background:#000;';
     }
 
-    // Try fullscreen (works on Android Chrome, not iOS Safari)
+    // Fullscreen + landscape lock
     const el = document.documentElement;
-    const doFullscreen = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (doFullscreen) doFullscreen.call(el).catch(() => { });
-
-    // Try landscape lock
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
     if (screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('landscape').catch(() => { });
+        screen.orientation.lock('landscape').catch(() => {});
     }
 
-    // Resize renderer after layout settles
+    // Resize — updateStyle=true so canvas CSS matches pixel buffer
     const doResize = () => {
         const w = window.innerWidth;
         const h = window.innerHeight;
-        state.renderer.setSize(w, h, false);
+        state.renderer.setSize(w, h); // true = update CSS style
         state.camera.aspect = (w / 2) / h;
-        state.camera.fov = 80;
         state.camera.updateProjectionMatrix();
     };
-    setTimeout(doResize, 100);
-    setTimeout(doResize, 400); // second pass for orientation change
-
-    // Listen for resize/orientation changes
+    setTimeout(doResize, 50);
+    setTimeout(doResize, 300);
+    setTimeout(doResize, 800);
     window.addEventListener('resize', doResize);
+    window.addEventListener('orientationchange', () => setTimeout(doResize, 200));
     enterStereoMode._resizeHandler = doResize;
 
-    // Enable gyroscope
-    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // Request gyroscope permission (iOS 13+)
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
-            .then(p => { if (p === 'granted') enableGyroscope(); })
-            .catch(console.error);
+            .then(p => { if (p === 'granted') startGyro(); })
+            .catch(e => { console.warn('Gyro denied:', e); startGyro(); });
     } else {
-        enableGyroscope();
+        startGyro();
     }
 }
 
-// 啟用陀螺儀控制
-function enableGyroscope() {
+function startGyro() {
     window.addEventListener('deviceorientation', handleOrientation, true);
 }
 
-// 處理陀螺儀數據 — proper quaternion-based rotation for phone VR
-let _gyroQ = new THREE.Quaternion();
-let _screenQ = new THREE.Quaternion();
-let _worldQ = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -90° around X
-
 function handleOrientation(event) {
     if (!state.camera || !stereoActive) return;
+    if (event.alpha === null) return;
 
-    const a = (event.alpha || 0) * (Math.PI / 180); // Z
-    const b = (event.beta || 0) * (Math.PI / 180); // X
-    const g = (event.gamma || 0) * (Math.PI / 180); // Y
+    const alpha = event.alpha;
+    const beta  = event.beta;
+    const gamma = event.gamma;
 
-    // Device orientation → quaternion (ZXY Euler order, standard for phones)
+    // Capture initial alpha as forward
+    if (_firstAlpha === null) _firstAlpha = alpha;
+    const adjustedAlpha = alpha - _firstAlpha;
+
+    const a = THREE.MathUtils.degToRad(adjustedAlpha);
+    const b = THREE.MathUtils.degToRad(beta);
+    const g = THREE.MathUtils.degToRad(gamma);
+
+    // Standard DeviceOrientationControls quaternion
     const euler = new THREE.Euler(b, a, -g, 'YXZ');
-    _gyroQ.setFromEuler(euler);
-    // Adjust from phone coordinate system to WebGL (screen faces -Z, phone faces up)
-    _gyroQ.multiply(_worldQ);
+    const q = new THREE.Quaternion().setFromEuler(euler);
+    q.multiply(_q1); // phone Y-up -> WebGL Z-forward
 
     // Screen orientation compensation
-    const orient = (window.orientation || 0) * (Math.PI / 180);
-    _screenQ.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -orient);
-    _gyroQ.multiply(_screenQ);
+    const orient = THREE.MathUtils.degToRad(window.orientation || 0);
+    const screenQ = new THREE.Quaternion().setFromAxisAngle(_zee, -orient);
+    q.multiply(screenQ);
 
-    state.camera.quaternion.copy(_gyroQ);
+    state.camera.quaternion.copy(q);
 }
 
-// 退出立體 VR 模式
+// Stereo split-screen rendering
+function renderStereo() {
+    const renderer = state.renderer;
+    const scene = state.scene;
+    const camera = state.camera;
+    const W = renderer.domElement.width;
+    const H = renderer.domElement.height;
+    const halfW = Math.floor(W / 2);
+    const eyeSep = 0.032;
+
+    renderer.setScissorTest(true);
+    renderer.autoClear = false;
+    renderer.clear();
+
+    const eyeAspect = halfW / H;
+    camera.aspect = eyeAspect;
+    camera.updateProjectionMatrix();
+
+    const origPos = camera.position.clone();
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+
+    // Left eye
+    camera.position.copy(origPos).addScaledVector(right, -eyeSep);
+    renderer.setViewport(0, 0, halfW, H);
+    renderer.setScissor(0, 0, halfW, H);
+    renderer.render(scene, camera);
+
+    // Right eye
+    camera.position.copy(origPos).addScaledVector(right, eyeSep);
+    renderer.setViewport(halfW, 0, halfW, H);
+    renderer.setScissor(halfW, 0, halfW, H);
+    renderer.render(scene, camera);
+
+    // Restore
+    camera.position.copy(origPos);
+    renderer.autoClear = true;
+}
+
 function exitStereoMode() {
     stereoActive = false;
 
     // Re-enable OrbitControls
     if (state.controls) state.controls.enabled = true;
 
-    // Restore UI panels
+    // Restore UI
     const panel = document.querySelector('.control-panel');
     const header = document.querySelector('.header');
     if (panel) panel.style.display = '';
     if (header) header.style.display = '';
 
-    // Restore canvas container CSS
+    // Restore canvas container
     const container = document.getElementById('canvas-container');
-    if (container) container.style.cssText = '';
-    const canvas = document.getElementById('canvas');
-    if (canvas) canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;';
+    if (container) container.style.cssText = container.dataset.origStyle || '';
 
     // Exit fullscreen
-    if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
+    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
     else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
 
-    // Remove resize listener
+    // Remove listeners
     if (enterStereoMode._resizeHandler) {
         window.removeEventListener('resize', enterStereoMode._resizeHandler);
         enterStereoMode._resizeHandler = null;
     }
-
-    // Disable gyroscope
     window.removeEventListener('deviceorientation', handleOrientation, true);
 
-    // Restore normal rendering
+    // Restore camera
+    if (_savedCamPos) state.camera.position.copy(_savedCamPos);
+    state.camera.quaternion.identity();
+    if (_savedCamTarget && state.controls) state.controls.target.copy(_savedCamTarget);
+
+    // Restore rendering
     state.renderer.setScissorTest(false);
+    state.renderer.autoClear = true;
     const w = container ? container.offsetWidth : window.innerWidth;
     const h = container ? container.offsetHeight : (window.innerHeight - 70);
     state.camera.fov = 45;
@@ -1301,10 +1363,9 @@ function exitStereoMode() {
     state.camera.updateProjectionMatrix();
     state.renderer.setSize(w, h, false);
     state.renderer.setViewport(0, 0, w, h);
-
-    // Reset camera rotation
-    state.camera.quaternion.identity();
+    if (state.controls) state.controls.update();
 }
+
 
 // Initialize the application
 init();
