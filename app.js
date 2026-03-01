@@ -278,6 +278,80 @@ function setupVRARButtons() {
             const arExitOverlay = document.getElementById('ar-exit-overlay');
             const arExitBtn = document.getElementById('ar-exit-btn');
 
+            // AR touch gesture controls (drag / pinch / twist)
+            function setupARTouchGestures(session) {
+                const canvas = state.renderer.domElement;
+                let prevTouches = {};
+                let lastPinchDist = 0;
+                let lastTwistAngle = 0;
+
+                function pos(t)   { return { x: t.clientX, y: t.clientY }; }
+                function dist(a,b){ return Math.hypot(b.x-a.x, b.y-a.y); }
+                function ang(a,b) { return Math.atan2(b.y-a.y, b.x-a.x); }
+
+                function onStart(e) {
+                    e.preventDefault();
+                    prevTouches = {};
+                    for (const t of e.touches) prevTouches[t.identifier] = pos(t);
+                    if (e.touches.length === 2) {
+                        const a = pos(e.touches[0]), b = pos(e.touches[1]);
+                        lastPinchDist  = dist(a, b);
+                        lastTwistAngle = ang(a, b);
+                    }
+                }
+
+                function onMove(e) {
+                    e.preventDefault();
+                    if (!state.currentModel) return;
+                    const xrCam = state.renderer.xr.getCamera();
+
+                    if (e.touches.length === 1) {
+                        const t = e.touches[0], prv = prevTouches[t.identifier];
+                        if (!prv) return;
+                        const dx = t.clientX - prv.x, dy = t.clientY - prv.y;
+                        const right = new THREE.Vector3(), up = new THREE.Vector3();
+                        xrCam.matrixWorld.extractBasis(right, up, new THREE.Vector3());
+                        const sens = 0.004;
+                        state.currentModel.position.addScaledVector(right, dx * sens);
+                        state.currentModel.position.addScaledVector(up, -dy * sens);
+                    } else if (e.touches.length === 2) {
+                        const a = pos(e.touches[0]), b = pos(e.touches[1]);
+                        const d = dist(a, b);
+                        if (lastPinchDist > 0) {
+                            const s = Math.max(0.005, Math.min(20,
+                                state.currentModel.scale.x * (d / lastPinchDist)));
+                            state.currentModel.scale.setScalar(s);
+                        }
+                        lastPinchDist = d;
+                        const a2 = ang(a, b);
+                        state.currentModel.rotation.y += a2 - lastTwistAngle;
+                        lastTwistAngle = a2;
+                    }
+                    prevTouches = {};
+                    for (const t of e.touches) prevTouches[t.identifier] = pos(t);
+                }
+
+                function onEnd(e) {
+                    prevTouches = {};
+                    for (const t of e.touches) prevTouches[t.identifier] = pos(t);
+                    if (e.touches.length >= 2) {
+                        const a = pos(e.touches[0]), b = pos(e.touches[1]);
+                        lastPinchDist  = dist(a, b);
+                        lastTwistAngle = ang(a, b);
+                    }
+                }
+
+                const opt = { passive: false };
+                canvas.addEventListener('touchstart', onStart, opt);
+                canvas.addEventListener('touchmove',  onMove,  opt);
+                canvas.addEventListener('touchend',   onEnd,   opt);
+                session.addEventListener('end', () => {
+                    canvas.removeEventListener('touchstart', onStart);
+                    canvas.removeEventListener('touchmove',  onMove);
+                    canvas.removeEventListener('touchend',   onEnd);
+                });
+            }
+
             const doAR = async () => {
                 if (!state.currentModel) { alert('請先載入模型'); return; }
                 if (xrCoolingDown) return;
@@ -315,6 +389,7 @@ function setupVRARButtons() {
 
                     scaleForAR();
                     await state.renderer.xr.setSession(session);
+                    setupARTouchGestures(session); // enable touch drag/pinch/twist
 
                     // Show AR exit overlay button
                     if (arExitOverlay) arExitOverlay.style.display = 'block';
