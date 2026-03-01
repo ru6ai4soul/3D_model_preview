@@ -1156,12 +1156,12 @@ function enterStereoMode() {
     _savedCamPos = state.camera.position.clone();
     _savedCamTarget = state.controls ? state.controls.target.clone() : new THREE.Vector3();
 
-    // Position camera looking at model center
+    // Position camera at model
     if (state.currentModel) {
         const box = new THREE.Box3().setFromObject(state.currentModel);
         const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
+        const sz = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(sz.x, sz.y, sz.z);
         state.camera.position.copy(center).add(new THREE.Vector3(0, 0, maxDim * 2));
     }
     state.camera.fov = 80;
@@ -1173,35 +1173,50 @@ function enterStereoMode() {
     if (panel) panel.style.display = 'none';
     if (header) header.style.display = 'none';
 
-    // Canvas container: fill entire screen
-    const container = document.getElementById('canvas-container');
-    if (container) {
-        container.dataset.origStyle = container.getAttribute('style') || '';
-        container.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:10000;background:#000;';
-    }
+    // *** KEY FIX: directly make the CANVAS position:fixed fullscreen ***
+    // This bypasses iOS Safari container layout issues entirely.
+    const canvas = state.renderer.domElement;
+    canvas.dataset.vrOrigStyle = canvas.getAttribute('style') || '';
+    canvas.style.cssText = [
+        'position:fixed',
+        'top:0', 'left:0',
+        'width:100vw', 'height:100vh',
+        'z-index:10000',
+        'display:block',
+        'touch-action:none'
+    ].join('!important;') + '!important';
+    document.body.appendChild(canvas); // Move canvas to body to avoid stacking context issues
 
-    // Fullscreen + landscape lock
-    const el = document.documentElement;
-    if (el.requestFullscreen) el.requestFullscreen().catch(() => { });
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    // Create an exit button overlay directly on body
+    const vrOverlay = document.createElement('div');
+    vrOverlay.id = 'vr-overlay';
+    vrOverlay.style.cssText = 'position:fixed;top:16px;right:16px;z-index:10001;';
+    vrOverlay.innerHTML = '';
+    document.body.appendChild(vrOverlay);
+    enterStereoMode._vrOverlay = vrOverlay;
+
+    // Background black
+    document.body.style.background = '#000';
+
+    // Landscape lock
     if (screen.orientation && screen.orientation.lock) {
         screen.orientation.lock('landscape').catch(() => { });
     }
 
-    // Resize immediately + also via timeout for orientation changes
+    // Resize: run immediately + on change
     const doResize = () => {
         const w = window.innerWidth;
         const h = window.innerHeight;
-        state.renderer.setSize(w, h); // updateStyle=true: canvas CSS matches buffer
+        state.renderer.setSize(w, h); // updateStyle=true → sets canvas.style.width/height
         state.camera.aspect = (w / 2) / h;
         state.camera.updateProjectionMatrix();
         console.log('[VR] Resized to', w, 'x', h, 'halfW=', Math.floor(w / 2));
     };
-    doResize(); // run immediately
-    setTimeout(doResize, 300);
-    setTimeout(doResize, 800);
+    doResize();
+    setTimeout(doResize, 200);
+    setTimeout(doResize, 600);
     window.addEventListener('resize', doResize);
-    window.addEventListener('orientationchange', () => setTimeout(doResize, 200));
+    window.addEventListener('orientationchange', () => setTimeout(doResize, 300));
     enterStereoMode._resizeHandler = doResize;
 
     // Request gyroscope permission (iOS 13+)
@@ -1312,11 +1327,24 @@ function exitStereoMode() {
     if (panel) panel.style.display = '';
     if (header) header.style.display = '';
 
-    // Restore canvas container
+    // Move canvas back to its original container
     const container = document.getElementById('canvas-container');
-    if (container) container.style.cssText = container.dataset.origStyle || '';
+    const canvas = state.renderer.domElement;
+    if (container && canvas.parentElement !== container) {
+        container.appendChild(canvas);
+    }
+    // Restore canvas original inline style
+    canvas.style.cssText = canvas.dataset.vrOrigStyle || '';
 
-    // Exit fullscreen
+    // Remove VR overlay
+    const vrOverlay = enterStereoMode._vrOverlay;
+    if (vrOverlay && vrOverlay.parentElement) vrOverlay.parentElement.removeChild(vrOverlay);
+    enterStereoMode._vrOverlay = null;
+
+    // Restore body background
+    document.body.style.background = '';
+
+    // Exit fullscreen if entered
     if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
     else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
 
