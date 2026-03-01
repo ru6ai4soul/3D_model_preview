@@ -1183,6 +1183,16 @@ function enterStereoMode() {
     if (panel) panel.style.display = 'none';
     if (header) header.style.display = 'none';
 
+    // Make canvas container fill entire viewport
+    const container = document.getElementById('canvas-container');
+    if (container) {
+        container.style.cssText = 'position:fixed!important;top:0;left:0;width:100vw;height:100vh;z-index:10000;background:#000;';
+    }
+    const canvas = document.getElementById('canvas');
+    if (canvas) {
+        canvas.style.cssText = 'display:block;width:100vw;height:100vh;';
+    }
+
     // Try fullscreen (works on Android Chrome, not iOS Safari)
     const el = document.documentElement;
     const doFullscreen = el.requestFullscreen || el.webkitRequestFullscreen;
@@ -1193,27 +1203,21 @@ function enterStereoMode() {
         screen.orientation.lock('landscape').catch(() => { });
     }
 
-    // Resize renderer immediately (don't wait for fullscreenchange)
-    setTimeout(() => {
+    // Resize renderer after layout settles
+    const doResize = () => {
         const w = window.innerWidth;
         const h = window.innerHeight;
         state.renderer.setSize(w, h, false);
         state.camera.aspect = (w / 2) / h;
-        state.camera.updateProjectionMatrix();
-    }, 100);
-
-    // Also resize on fullscreenchange (for browsers that support it)
-    const onFS = () => {
-        const w = window.innerWidth;
-        const h = window.innerHeight;
-        state.renderer.setSize(w, h, false);
-        state.camera.aspect = (w / 2) / h;
+        state.camera.fov = 80;
         state.camera.updateProjectionMatrix();
     };
-    document.addEventListener('fullscreenchange', onFS);
-    document.addEventListener('webkitfullscreenchange', onFS);
-    // Store for cleanup
-    enterStereoMode._fsHandler = onFS;
+    setTimeout(doResize, 100);
+    setTimeout(doResize, 400); // second pass for orientation change
+
+    // Listen for resize/orientation changes
+    window.addEventListener('resize', doResize);
+    enterStereoMode._resizeHandler = doResize;
 
     // Enable gyroscope
     if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -1230,23 +1234,30 @@ function enableGyroscope() {
     window.addEventListener('deviceorientation', handleOrientation, true);
 }
 
-// 處理陀螺儀數據
-let alpha = 0, beta = 0, gamma = 0;
+// 處理陀螺儀數據 — proper quaternion-based rotation for phone VR
+let _gyroQ = new THREE.Quaternion();
+let _screenQ = new THREE.Quaternion();
+let _worldQ = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -90° around X
+
 function handleOrientation(event) {
-    alpha = event.alpha || 0;  // Z 軸旋轉
-    beta = event.beta || 0;    // X 軸旋轉
-    gamma = event.gamma || 0;  // Y 軸旋轉
+    if (!state.camera || !stereoActive) return;
 
-    // 將陀螺儀數據應用到相機
-    if (state.camera && stereoActive) {
-        // 轉換為弧度
-        const alphaRad = alpha * (Math.PI / 180);
-        const betaRad = beta * (Math.PI / 180);
-        const gammaRad = gamma * (Math.PI / 180);
+    const a = (event.alpha || 0) * (Math.PI / 180); // Z
+    const b = (event.beta || 0) * (Math.PI / 180); // X
+    const g = (event.gamma || 0) * (Math.PI / 180); // Y
 
-        // 更新相機旋轉
-        state.camera.rotation.set(betaRad, alphaRad, -gammaRad, 'YXZ');
-    }
+    // Device orientation → quaternion (ZXY Euler order, standard for phones)
+    const euler = new THREE.Euler(b, a, -g, 'YXZ');
+    _gyroQ.setFromEuler(euler);
+    // Adjust from phone coordinate system to WebGL (screen faces -Z, phone faces up)
+    _gyroQ.multiply(_worldQ);
+
+    // Screen orientation compensation
+    const orient = (window.orientation || 0) * (Math.PI / 180);
+    _screenQ.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -orient);
+    _gyroQ.multiply(_screenQ);
+
+    state.camera.quaternion.copy(_gyroQ);
 }
 
 // 退出立體 VR 模式
@@ -1262,25 +1273,29 @@ function exitStereoMode() {
     if (panel) panel.style.display = '';
     if (header) header.style.display = '';
 
+    // Restore canvas container CSS
+    const container = document.getElementById('canvas-container');
+    if (container) container.style.cssText = '';
+    const canvas = document.getElementById('canvas');
+    if (canvas) canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;';
+
     // Exit fullscreen
     if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
     else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
 
-    // Remove fullscreenchange listener
-    if (enterStereoMode._fsHandler) {
-        document.removeEventListener('fullscreenchange', enterStereoMode._fsHandler);
-        document.removeEventListener('webkitfullscreenchange', enterStereoMode._fsHandler);
-        enterStereoMode._fsHandler = null;
+    // Remove resize listener
+    if (enterStereoMode._resizeHandler) {
+        window.removeEventListener('resize', enterStereoMode._resizeHandler);
+        enterStereoMode._resizeHandler = null;
     }
 
     // Disable gyroscope
     window.removeEventListener('deviceorientation', handleOrientation, true);
 
-    // Restore normal rendering - use container actual size
+    // Restore normal rendering
     state.renderer.setScissorTest(false);
-    const container = document.getElementById('canvas-container');
-    const w = container.offsetWidth || window.innerWidth;
-    const h = container.offsetHeight || (window.innerHeight - 70);
+    const w = container ? container.offsetWidth : window.innerWidth;
+    const h = container ? container.offsetHeight : (window.innerHeight - 70);
     state.camera.fov = 45;
     state.camera.aspect = w / h;
     state.camera.updateProjectionMatrix();
@@ -1288,7 +1303,7 @@ function exitStereoMode() {
     state.renderer.setViewport(0, 0, w, h);
 
     // Reset camera rotation
-    state.camera.rotation.set(0, 0, 0);
+    state.camera.quaternion.identity();
 }
 
 // Initialize the application
