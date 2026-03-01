@@ -253,7 +253,11 @@ function setupVRARButtons() {
         const h = cont.offsetHeight || (window.innerHeight - 70);
         state.camera.aspect = w / h;
         state.camera.updateProjectionMatrix();
-        state.renderer.setSize(w, h, false);
+
+        // Android WebXR can override inline canvas styles.
+        // updateStyle=true ensures CSS width/height are set properly, fixing deformation on exit.
+        state.renderer.setSize(w, h, true);
+
         // Reset camera to frame the restored model
         if (state.currentModel && state.controls) {
             const box = new THREE.Box3().setFromObject(state.currentModel);
@@ -1196,17 +1200,9 @@ function enterStereoMode(onExitCallback) {
     if (header) header.style.display = 'none';
 
     // *** KEY FIX: directly make the CANVAS position:fixed fullscreen ***
-    // This bypasses iOS Safari container layout issues entirely.
     const canvas = state.renderer.domElement;
     canvas.dataset.vrOrigStyle = canvas.getAttribute('style') || '';
-    canvas.style.cssText = [
-        'position:fixed',
-        'top:0', 'left:0',
-        'width:100vw', 'height:100vh',
-        'z-index:10000',
-        'display:block',
-        'touch-action:none'
-    ].join('!important;') + '!important';
+    canvas.style.cssText = 'position:fixed !important; top:0 !important; left:0 !important; width:100% !important; height:100% !important; z-index:10000 !important; display:block !important; touch-action:none !important;';
     document.body.appendChild(canvas); // Move canvas to body to avoid stacking context issues
 
     // Create VR overlay: exit button + iOS fullscreen hint
@@ -1305,11 +1301,10 @@ function renderStereo() {
     const scene = state.scene;
     const camera = state.camera;
 
-    // Use current drawing buffer size (pixels)
-    const size = new THREE.Vector2();
-    renderer.getSize(size);
-    const W = size.x;
-    const H = size.y;
+    // VERY IMPORTANT: Use actual framebuffer physical pixels (domElement width/height)
+    // Using renderer.getSize() returns CSS pixels, which breaks on Retina/iOS screens (e.g. draws tiny corner)
+    const W = renderer.domElement.width;
+    const H = renderer.domElement.height;
     const halfW = Math.floor(W / 2);
 
     if (_stereoLogCount < 5) {
