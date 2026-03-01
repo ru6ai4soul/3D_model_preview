@@ -1176,12 +1176,18 @@ let deviceControls = null;
 // --- Gyroscope state ---
 let _alphaOffset = 0;
 let _firstAlpha = null;
-const _zee = new THREE.Vector3(0, 0, 1);
-const _q1  = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -90 deg X
+let _zee = null;  // lazy init — THREE may not be ready at parse time
+let _q1 = null;
 let _savedCamPos = null;
 let _savedCamTarget = null;
 
+function _initGyroConstants() {
+    if (!_zee) _zee = new THREE.Vector3(0, 0, 1);
+    if (!_q1) _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+}
+
 function enterStereoMode() {
+    _initGyroConstants();
     stereoActive = true;
     _firstAlpha = null;
 
@@ -1218,10 +1224,10 @@ function enterStereoMode() {
 
     // Fullscreen + landscape lock
     const el = document.documentElement;
-    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => { });
     else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
     if (screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('landscape').catch(() => {});
+        screen.orientation.lock('landscape').catch(() => { });
     }
 
     // Resize — updateStyle=true so canvas CSS matches pixel buffer
@@ -1257,9 +1263,10 @@ function startGyro() {
 function handleOrientation(event) {
     if (!state.camera || !stereoActive) return;
     if (event.alpha === null) return;
+    _initGyroConstants();
 
     const alpha = event.alpha;
-    const beta  = event.beta;
+    const beta = event.beta;
     const gamma = event.gamma;
 
     // Capture initial alpha as forward
@@ -1338,7 +1345,7 @@ function exitStereoMode() {
     if (container) container.style.cssText = container.dataset.origStyle || '';
 
     // Exit fullscreen
-    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
     else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
 
     // Remove listeners
