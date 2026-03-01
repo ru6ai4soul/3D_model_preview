@@ -1193,15 +1193,16 @@ function enterStereoMode() {
         screen.orientation.lock('landscape').catch(() => { });
     }
 
-    // Resize — updateStyle=true so canvas CSS matches pixel buffer
+    // Resize immediately + also via timeout for orientation changes
     const doResize = () => {
         const w = window.innerWidth;
         const h = window.innerHeight;
-        state.renderer.setSize(w, h); // true = update CSS style
+        state.renderer.setSize(w, h); // updateStyle=true: canvas CSS matches buffer
         state.camera.aspect = (w / 2) / h;
         state.camera.updateProjectionMatrix();
+        console.log('[VR] Resized to', w, 'x', h, 'halfW=', Math.floor(w / 2));
     };
-    setTimeout(doResize, 50);
+    doResize(); // run immediately
     setTimeout(doResize, 300);
     setTimeout(doResize, 800);
     window.addEventListener('resize', doResize);
@@ -1258,6 +1259,7 @@ function renderStereo() {
     const renderer = state.renderer;
     const scene = state.scene;
     const camera = state.camera;
+    // Use actual framebuffer dimensions
     const W = renderer.domElement.width;
     const H = renderer.domElement.height;
     const halfW = Math.floor(W / 2);
@@ -1267,8 +1269,7 @@ function renderStereo() {
     renderer.autoClear = false;
     renderer.clear();
 
-    const eyeAspect = halfW / H;
-    camera.aspect = eyeAspect;
+    camera.aspect = halfW / H;
     camera.updateProjectionMatrix();
 
     const origPos = camera.position.clone();
@@ -1289,6 +1290,8 @@ function renderStereo() {
     // Restore
     camera.position.copy(origPos);
     renderer.autoClear = true;
+    renderer.setViewport(0, 0, W, H);
+    renderer.setScissor(0, 0, W, H);
 }
 
 function exitStereoMode() {
