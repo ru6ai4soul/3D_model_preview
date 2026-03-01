@@ -253,11 +253,7 @@ function setupVRARButtons() {
         const h = cont.offsetHeight || (window.innerHeight - 70);
         state.camera.aspect = w / h;
         state.camera.updateProjectionMatrix();
-
-        // Android WebXR can override inline canvas styles.
-        // updateStyle=true ensures CSS width/height are set properly, fixing deformation on exit.
-        state.renderer.setSize(w, h, true);
-
+        state.renderer.setSize(w, h, false);
         // Reset camera to frame the restored model
         if (state.currentModel && state.controls) {
             const box = new THREE.Box3().setFromObject(state.currentModel);
@@ -491,30 +487,21 @@ function setupVRARButtons() {
 
     function setupIOSVRFallback(vBtn, fVBtn) {
         showBtn(vBtn, fVBtn);
-        // Use module-level flag so re-entrant state is always in sync
-        const setVRLabel = (on) => {
-            if (on) {
+        let inVR = false;
+        const doCardboard = () => {
+            if (!state.currentModel) { alert('請先載入模型'); return; }
+            inVR = !inVR;
+            if (inVR) {
+                state.camera.fov = 80;
+                state.camera.updateProjectionMatrix();
+                enterStereoMode();
                 vBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
                 if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
             } else {
+                exitStereoMode();
                 vBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
                 if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
             }
-        };
-        const doExit = () => {
-            _inCardboardVR = false;
-            exitStereoMode();
-            setVRLabel(false);
-        };
-        const doEnter = () => {
-            _inCardboardVR = true;
-            enterStereoMode(doExit);
-            setVRLabel(true);
-        };
-        const doCardboard = () => {
-            if (!state.currentModel) { alert('請先載入模型'); return; }
-            if (_inCardboardVR) doExit();
-            else doEnter();
         };
         vBtn.addEventListener('click', doCardboard);
         if (fVBtn) fVBtn.addEventListener('click', doCardboard);
@@ -1143,7 +1130,6 @@ function updateFPS(delta) {
 let stereoActive = false;
 let stereoEffect = null;
 let deviceControls = null;
-let _inCardboardVR = false; // module-level flag, avoids closure sync issues
 
 // --- Gyroscope state ---
 let _alphaOffset = 0;
@@ -1158,16 +1144,7 @@ function _initGyroConstants() {
     if (!_q1) _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 }
 
-function enterStereoMode(onExitCallback) {
-    // Clean up any previous stereo session first
-    if (stereoActive) {
-        stereoActive = false;
-        window.removeEventListener('deviceorientation', handleOrientation, true);
-        if (enterStereoMode._resizeHandler) {
-            window.removeEventListener('resize', enterStereoMode._resizeHandler);
-            enterStereoMode._resizeHandler = null;
-        }
-    }
+function enterStereoMode() {
     _initGyroConstants();
     stereoActive = true;
     _firstAlpha = null;
@@ -1179,16 +1156,13 @@ function enterStereoMode(onExitCallback) {
     _savedCamPos = state.camera.position.clone();
     _savedCamTarget = state.controls ? state.controls.target.clone() : new THREE.Vector3();
 
-    // Position camera facing the model from the front (+Z), centered
+    // Position camera at model
     if (state.currentModel) {
         const box = new THREE.Box3().setFromObject(state.currentModel);
         const center = box.getCenter(new THREE.Vector3());
         const sz = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(sz.x, sz.y, sz.z);
-        // Place camera in front of model (along +Z axis from center)
-        state.camera.position.copy(center).add(new THREE.Vector3(0, 0, maxDim * 1.5));
-        // Explicitly look at center so model appears in the middle
-        state.camera.lookAt(center);
+        state.camera.position.copy(center).add(new THREE.Vector3(0, 0, maxDim * 2));
     }
     state.camera.fov = 80;
     state.camera.updateProjectionMatrix();
@@ -1200,30 +1174,26 @@ function enterStereoMode(onExitCallback) {
     if (header) header.style.display = 'none';
 
     // *** KEY FIX: directly make the CANVAS position:fixed fullscreen ***
+    // This bypasses iOS Safari container layout issues entirely.
     const canvas = state.renderer.domElement;
     canvas.dataset.vrOrigStyle = canvas.getAttribute('style') || '';
-    canvas.style.cssText = 'position:fixed !important; top:0 !important; left:0 !important; width:100% !important; height:100% !important; z-index:10000 !important; display:block !important; touch-action:none !important;';
+    canvas.style.cssText = [
+        'position:fixed',
+        'top:0', 'left:0',
+        'width:100vw', 'height:100vh',
+        'z-index:10000',
+        'display:block',
+        'touch-action:none'
+    ].join('!important;') + '!important';
     document.body.appendChild(canvas); // Move canvas to body to avoid stacking context issues
 
-    // Create VR overlay: exit button + iOS fullscreen hint
-    const isIOSDevice = /iPhone|iPad/i.test(navigator.userAgent);
+    // Create an exit button overlay directly on body
     const vrOverlay = document.createElement('div');
     vrOverlay.id = 'vr-overlay';
-    vrOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10001;display:flex;justify-content:space-between;align-items:flex-start;padding:12px;pointer-events:none;';
-    vrOverlay.innerHTML = `
-        <div style="pointer-events:auto;background:rgba(0,0,0,0.5);border-radius:8px;padding:6px;">
-            ${isIOSDevice ? '<div style="color:rgba(255,255,255,0.7);font-size:11px;padding:4px 8px;">📱 全螢幕：加入主畫面</div>' : ''}
-        </div>
-        <button id="vr-exit-btn" style="pointer-events:auto;background:rgba(0,0,0,0.6);color:white;border:1.5px solid rgba(255,255,255,0.6);border-radius:8px;padding:10px 16px;font-size:15px;cursor:pointer;backdrop-filter:blur(4px);">✕ 退出 VR</button>
-    `;
+    vrOverlay.style.cssText = 'position:fixed;top:16px;right:16px;z-index:10001;';
+    vrOverlay.innerHTML = '';
     document.body.appendChild(vrOverlay);
     enterStereoMode._vrOverlay = vrOverlay;
-
-    // Exit button handler — calls onExitCallback to sync button labels
-    document.getElementById('vr-exit-btn').addEventListener('click', () => {
-        if (onExitCallback) onExitCallback();
-        else exitStereoMode();
-    });
 
     // Background black
     document.body.style.background = '#000';
@@ -1301,10 +1271,11 @@ function renderStereo() {
     const scene = state.scene;
     const camera = state.camera;
 
-    // VERY IMPORTANT: Use actual framebuffer physical pixels (domElement width/height)
-    // Using renderer.getSize() returns CSS pixels, which breaks on Retina/iOS screens (e.g. draws tiny corner)
-    const W = renderer.domElement.width;
-    const H = renderer.domElement.height;
+    // Use current drawing buffer size (pixels)
+    const size = new THREE.Vector2();
+    renderer.getSize(size);
+    const W = size.x;
+    const H = size.y;
     const halfW = Math.floor(W / 2);
 
     if (_stereoLogCount < 5) {
