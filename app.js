@@ -482,28 +482,34 @@ function setupVRARButtons() {
                 if (floatVR) floatVR.addEventListener('click', doVR);
 
             } else if (isIOS) {
-                // iOS Safari: Cardboard stereo fallback
-                showBtn(vrButton, floatVR);
-                let inVR = false;
-                const doCardboard = () => {
-                    if (!state.currentModel) { alert('請先載入模型'); return; }
-                    inVR = !inVR;
-                    if (inVR) {
-                        state.camera.fov = 80;
-                        state.camera.updateProjectionMatrix();
-                        enterStereoMode();
-                        vrButton.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
-                        if (floatVR) floatVR.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
-                    } else {
-                        exitStereoMode();
-                        vrButton.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
-                        if (floatVR) floatVR.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
-                    }
-                };
-                vrButton.addEventListener('click', doCardboard);
-                if (floatVR) floatVR.addEventListener('click', doCardboard);
+                setupIOSVRFallback(vrButton, floatVR);
             }
         });
+    } else if (isIOS) {
+        // iOS Safari: navigator.xr is missing entirely
+        setupIOSVRFallback(vrButton, floatVR);
+    }
+
+    function setupIOSVRFallback(vBtn, fVBtn) {
+        showBtn(vBtn, fVBtn);
+        let inVR = false;
+        const doCardboard = () => {
+            if (!state.currentModel) { alert('請先載入模型'); return; }
+            inVR = !inVR;
+            if (inVR) {
+                state.camera.fov = 80;
+                state.camera.updateProjectionMatrix();
+                enterStereoMode();
+                vBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
+                if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
+            } else {
+                exitStereoMode();
+                vBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
+                if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
+            }
+        };
+        vBtn.addEventListener('click', doCardboard);
+        if (fVBtn) fVBtn.addEventListener('click', doCardboard);
     }
 } // end setupVRARButtons
 
