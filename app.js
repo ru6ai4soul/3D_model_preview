@@ -1119,44 +1119,7 @@ function animate() {
     updateFPS(delta);
 }
 
-// 立體左右分屏渲染（Cardboard VR）
-function renderStereo() {
-    const renderer = state.renderer;
-    const scene = state.scene;
-    const camera = state.camera;
-    const W = renderer.domElement.width;
-    const H = renderer.domElement.height;
-    const halfW = Math.floor(W / 2);
-    const eyeSep = 0.032; // 每眼偏移 32mm
 
-    // 重要：每眼的 aspect = halfW / H
-    const eyeAspect = halfW / H;
-    camera.aspect = eyeAspect;
-    camera.updateProjectionMatrix();
-
-    renderer.setScissorTest(true);
-
-    // 計算相機右方向向量
-    const origPos = camera.position.clone();
-    const fwd = new THREE.Vector3();
-    camera.getWorldDirection(fwd);
-    const right = new THREE.Vector3().crossVectors(fwd, camera.up).normalize();
-
-    // 左眼
-    camera.position.copy(origPos).addScaledVector(right, -eyeSep);
-    renderer.setViewport(0, 0, halfW, H);
-    renderer.setScissor(0, 0, halfW, H);
-    renderer.render(scene, camera);
-
-    // 右眼
-    camera.position.copy(origPos).addScaledVector(right, eyeSep);
-    renderer.setViewport(halfW, 0, halfW, H);
-    renderer.setScissor(halfW, 0, halfW, H);
-    renderer.render(scene, camera);
-
-    // 恢復相機位置
-    camera.position.copy(origPos);
-}
 
 function updateFPS(delta) {
     const fps = Math.round(1 / delta);
