@@ -279,28 +279,37 @@ function setupVRARButtons() {
             const arExitBtn = document.getElementById('ar-exit-btn');
 
             // AR touch gesture controls (drag / pinch / twist)
+            // WebXR AR sends touch events to dom-overlay root, NOT canvas
             function setupARTouchGestures(session) {
-                const canvas = state.renderer.domElement;
+                const overlay = arExitOverlay;
+                if (!overlay) return;
                 let prevTouches = {};
                 let lastPinchDist = 0;
                 let lastTwistAngle = 0;
 
-                function pos(t)   { return { x: t.clientX, y: t.clientY }; }
-                function dist(a,b){ return Math.hypot(b.x-a.x, b.y-a.y); }
-                function ang(a,b) { return Math.atan2(b.y-a.y, b.x-a.x); }
+                function pos(t) { return { x: t.clientX, y: t.clientY }; }
+                function dist(a, b) { return Math.hypot(b.x - a.x, b.y - a.y); }
+                function ang(a, b) { return Math.atan2(b.y - a.y, b.x - a.x); }
+
+                // Ignore touches on exit button
+                function isExitBtn(e) {
+                    return e.target && (e.target.id === 'ar-exit-btn' || e.target.closest('#ar-exit-btn'));
+                }
 
                 function onStart(e) {
+                    if (isExitBtn(e)) return;
                     e.preventDefault();
                     prevTouches = {};
                     for (const t of e.touches) prevTouches[t.identifier] = pos(t);
                     if (e.touches.length === 2) {
                         const a = pos(e.touches[0]), b = pos(e.touches[1]);
-                        lastPinchDist  = dist(a, b);
+                        lastPinchDist = dist(a, b);
                         lastTwistAngle = ang(a, b);
                     }
                 }
 
                 function onMove(e) {
+                    if (isExitBtn(e)) return;
                     e.preventDefault();
                     if (!state.currentModel) return;
                     const xrCam = state.renderer.xr.getCamera();
@@ -336,19 +345,19 @@ function setupVRARButtons() {
                     for (const t of e.touches) prevTouches[t.identifier] = pos(t);
                     if (e.touches.length >= 2) {
                         const a = pos(e.touches[0]), b = pos(e.touches[1]);
-                        lastPinchDist  = dist(a, b);
+                        lastPinchDist = dist(a, b);
                         lastTwistAngle = ang(a, b);
                     }
                 }
 
                 const opt = { passive: false };
-                canvas.addEventListener('touchstart', onStart, opt);
-                canvas.addEventListener('touchmove',  onMove,  opt);
-                canvas.addEventListener('touchend',   onEnd,   opt);
+                overlay.addEventListener('touchstart', onStart, opt);
+                overlay.addEventListener('touchmove', onMove, opt);
+                overlay.addEventListener('touchend', onEnd, opt);
                 session.addEventListener('end', () => {
-                    canvas.removeEventListener('touchstart', onStart);
-                    canvas.removeEventListener('touchmove',  onMove);
-                    canvas.removeEventListener('touchend',   onEnd);
+                    overlay.removeEventListener('touchstart', onStart);
+                    overlay.removeEventListener('touchmove', onMove);
+                    overlay.removeEventListener('touchend', onEnd);
                 });
             }
 

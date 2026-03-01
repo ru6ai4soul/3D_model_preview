@@ -34,7 +34,7 @@
             <div class="logo">
                 <span class="logo-icon">🎨</span>
                 <span class="logo-text">3D 模型預覽器</span>
-                <span class="version">v8.8</span>
+                <span class="version">v8.9</span>
             </div>
             <div class="header-actions">
                 <a href="gallery.html" class="btn btn-secondary">
@@ -228,9 +228,9 @@
     <!-- AR exit overlay: shown on top of camera during AR session -->
     <div id="ar-exit-overlay" style="
         display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-        z-index: 9999; pointer-events: none;">
+        z-index: 9999; pointer-events: all; touch-action: none;">
         <button id="ar-exit-btn" style="
-            pointer-events: all; position: absolute; top: 20px; left: 20px;
+            position: absolute; top: 20px; left: 20px;
             background: rgba(0,0,0,0.6); color: #fff; border: 2px solid #fff;
             border-radius: 50%; width: 52px; height: 52px; font-size: 22px;
             cursor: pointer; backdrop-filter: blur(4px);" title="退出 AR">✕</button>
