@@ -437,7 +437,6 @@ function setupVRARButtons() {
         navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
             if (supported) {
                 showBtn(vrButton, floatVR);
-
                 const doVR = async () => {
                     if (!state.currentModel) { alert('請先載入模型'); return; }
                     if (xrCoolingDown) return; // wait for previous session to fully release
@@ -470,23 +469,19 @@ function setupVRARButtons() {
                     } catch (e) {
                         activeXRSession = null;
                         restoreModelFromXR();
-                        if (state.controls) state.controls.enabled = true;
                         console.error('VR 啟動失敗:', e);
-                        // Silently ignore 'already active' (race condition)
-                        if (e.message && e.message.includes('already')) return;
-                        alert('VR 啟動失敗: ' + e.message);
+                        // Fallback to Cardboard if WebXR fails
+                        setupIOSVRFallback(vrButton, floatVR);
                     }
                 };
-
                 vrButton.addEventListener('click', doVR);
                 if (floatVR) floatVR.addEventListener('click', doVR);
-
-            } else if (isIOS) {
+            } else {
+                // Falls back to Cardboard VR for all non-XR systems (debugging PC/iOS)
                 setupIOSVRFallback(vrButton, floatVR);
             }
         });
-    } else if (isIOS) {
-        // iOS Safari: navigator.xr is missing entirely
+    } else {
         setupIOSVRFallback(vrButton, floatVR);
     }
 
@@ -1255,14 +1250,24 @@ function handleOrientation(event) {
 }
 
 // Stereo split-screen rendering
+let _stereoLogCount = 0;
 function renderStereo() {
     const renderer = state.renderer;
     const scene = state.scene;
     const camera = state.camera;
-    // Use actual framebuffer dimensions
-    const W = renderer.domElement.width;
-    const H = renderer.domElement.height;
+
+    // Use current drawing buffer size (pixels)
+    const size = new THREE.Vector2();
+    renderer.getSize(size);
+    const W = size.x;
+    const H = size.y;
     const halfW = Math.floor(W / 2);
+
+    if (_stereoLogCount < 5) {
+        console.log('[VR] renderStereo W:', W, 'H:', H, 'halfW:', halfW);
+        _stereoLogCount++;
+    }
+
     const eyeSep = 0.032;
 
     renderer.setScissorTest(true);
@@ -1275,23 +1280,24 @@ function renderStereo() {
     const origPos = camera.position.clone();
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
 
-    // Left eye
+    // Left half
     camera.position.copy(origPos).addScaledVector(right, -eyeSep);
     renderer.setViewport(0, 0, halfW, H);
     renderer.setScissor(0, 0, halfW, H);
     renderer.render(scene, camera);
 
-    // Right eye
+    // Right half
     camera.position.copy(origPos).addScaledVector(right, eyeSep);
     renderer.setViewport(halfW, 0, halfW, H);
     renderer.setScissor(halfW, 0, halfW, H);
     renderer.render(scene, camera);
 
-    // Restore
+    // Reset
     camera.position.copy(origPos);
     renderer.autoClear = true;
     renderer.setViewport(0, 0, W, H);
     renderer.setScissor(0, 0, W, H);
+    renderer.setScissorTest(false);
 }
 
 function exitStereoMode() {
