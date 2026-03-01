@@ -1107,7 +1107,7 @@ function animate() {
         state.currentModel.rotation.y += state.autoRotateSpeed * delta;
     }
 
-    state.controls.update();
+    if (!stereoActive) state.controls.update();
 
     // 立體 VR 模式下左右分屏，否則正常渲染
     if (stereoActive) {
@@ -1174,42 +1174,54 @@ let deviceControls = null;
 function enterStereoMode() {
     stereoActive = true;
 
-    // 全螢幕
+    // Disable OrbitControls — gyroscope will control camera
+    if (state.controls) state.controls.enabled = false;
+
+    // Hide UI panels for cleaner view
+    const panel = document.querySelector('.control-panel');
+    const header = document.querySelector('.header');
+    if (panel) panel.style.display = 'none';
+    if (header) header.style.display = 'none';
+
+    // Try fullscreen (works on Android Chrome, not iOS Safari)
     const el = document.documentElement;
     const doFullscreen = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (doFullscreen) doFullscreen.call(el);
+    if (doFullscreen) doFullscreen.call(el).catch(() => { });
 
-    // 等全螢幕生效後再調整尺寸（fullscreenchange 事件）
+    // Try landscape lock
+    if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => { });
+    }
+
+    // Resize renderer immediately (don't wait for fullscreenchange)
+    setTimeout(() => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        state.renderer.setSize(w, h, false);
+        state.camera.aspect = (w / 2) / h;
+        state.camera.updateProjectionMatrix();
+    }, 100);
+
+    // Also resize on fullscreenchange (for browsers that support it)
     const onFS = () => {
-        document.removeEventListener('fullscreenchange', onFS);
-        document.removeEventListener('webkitfullscreenchange', onFS);
-
-        // 取橫向螢幕尺寸
-        const sw = window.screen.width;
-        const sh = window.screen.height;
-        const landscapeW = Math.max(sw, sh);
-        const landscapeH = Math.min(sw, sh);
-
-        state.renderer.setSize(landscapeW, landscapeH);
-        // 注意: renderStereo() 會再設定每眼正確的 aspect，這裡只需設初始
-        state.camera.aspect = (landscapeW / 2) / landscapeH;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        state.renderer.setSize(w, h, false);
+        state.camera.aspect = (w / 2) / h;
         state.camera.updateProjectionMatrix();
     };
     document.addEventListener('fullscreenchange', onFS);
     document.addEventListener('webkitfullscreenchange', onFS);
+    // Store for cleanup
+    enterStereoMode._fsHandler = onFS;
 
-    // 啟用陀螺儀
+    // Enable gyroscope
     if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
             .then(p => { if (p === 'granted') enableGyroscope(); })
             .catch(console.error);
     } else {
         enableGyroscope();
-    }
-
-    // 鎖定橫向
-    if (screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('landscape').catch(() => { });
     }
 }
 
@@ -1241,14 +1253,30 @@ function handleOrientation(event) {
 function exitStereoMode() {
     stereoActive = false;
 
-    // 退出全螢幕
-    if (document.exitFullscreen) document.exitFullscreen();
+    // Re-enable OrbitControls
+    if (state.controls) state.controls.enabled = true;
+
+    // Restore UI panels
+    const panel = document.querySelector('.control-panel');
+    const header = document.querySelector('.header');
+    if (panel) panel.style.display = '';
+    if (header) header.style.display = '';
+
+    // Exit fullscreen
+    if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
     else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
 
-    // 停用陀螺儀
+    // Remove fullscreenchange listener
+    if (enterStereoMode._fsHandler) {
+        document.removeEventListener('fullscreenchange', enterStereoMode._fsHandler);
+        document.removeEventListener('webkitfullscreenchange', enterStereoMode._fsHandler);
+        enterStereoMode._fsHandler = null;
+    }
+
+    // Disable gyroscope
     window.removeEventListener('deviceorientation', handleOrientation, true);
 
-    // 恢復正常渲染 - 使用容器實際尺寸
+    // Restore normal rendering - use container actual size
     state.renderer.setScissorTest(false);
     const container = document.getElementById('canvas-container');
     const w = container.offsetWidth || window.innerWidth;
@@ -1259,7 +1287,7 @@ function exitStereoMode() {
     state.renderer.setSize(w, h, false);
     state.renderer.setViewport(0, 0, w, h);
 
-    // 重置相機旋轉
+    // Reset camera rotation
     state.camera.rotation.set(0, 0, 0);
 }
 
