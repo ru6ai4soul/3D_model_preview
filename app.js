@@ -248,12 +248,17 @@ function setupVRARButtons() {
             state.renderer.setClearAlpha(1);
         }
         if (state.gridHelper) state.gridHelper.visible = true;
+
+        // WebXR modifies canvas inline CSS. We MUST use setSize(w,h) with
+        // updateStyle=true (the default) to reset CSS, otherwise the second
+        // VR exit will have distorted canvas because stale inline styles remain.
+        state.renderer.setPixelRatio(window.devicePixelRatio);
         const cont = document.getElementById('canvas-container');
         const w = cont.offsetWidth || window.innerWidth;
         const h = cont.offsetHeight || (window.innerHeight - 70);
         state.camera.aspect = w / h;
         state.camera.updateProjectionMatrix();
-        state.renderer.setSize(w, h, false);
+        state.renderer.setSize(w, h); // updateStyle=true → resets canvas CSS
         // Reset camera to frame the restored model
         if (state.currentModel && state.controls) {
             const box = new THREE.Box3().setFromObject(state.currentModel);
