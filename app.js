@@ -494,7 +494,7 @@ function setupVRARButtons() {
             if (inVR) {
                 state.camera.fov = 80;
                 state.camera.updateProjectionMatrix();
-                enterStereoMode();
+                enterStereoMode(doCardboard); // pass exit callback
                 vBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
                 if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
             } else {
@@ -1144,7 +1144,16 @@ function _initGyroConstants() {
     if (!_q1) _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 }
 
-function enterStereoMode() {
+function enterStereoMode(exitCallback) {
+    // Always clean up any previous session's listeners before starting a new one
+    // This fixes Android: second VR entry no longer stacks duplicate listeners
+    if (enterStereoMode._resizeHandler) {
+        window.removeEventListener('resize', enterStereoMode._resizeHandler);
+        enterStereoMode._resizeHandler = null;
+    }
+    window.removeEventListener('deviceorientation', handleOrientation, true);
+    stereoActive = false; // reset first, then set true below
+
     _initGyroConstants();
     stereoActive = true;
     _firstAlpha = null;
@@ -1191,7 +1200,24 @@ function enterStereoMode() {
     const vrOverlay = document.createElement('div');
     vrOverlay.id = 'vr-overlay';
     vrOverlay.style.cssText = 'position:fixed;top:16px;right:16px;z-index:10001;';
-    vrOverlay.innerHTML = '';
+    // ✕ button — calls exitCallback so inVR flag stays in sync
+    const exitBtn = document.createElement('button');
+    exitBtn.textContent = '✕ 退出 VR';
+    exitBtn.style.cssText = [
+        'background:rgba(0,0,0,0.6)',
+        'color:#fff',
+        'border:1.5px solid rgba(255,255,255,0.6)',
+        'border-radius:8px',
+        'padding:10px 18px',
+        'font-size:16px',
+        'cursor:pointer',
+        'touch-action:manipulation'
+    ].join(';');
+    exitBtn.addEventListener('click', () => {
+        if (exitCallback) exitCallback(); // toggles inVR + calls exitStereoMode
+        else exitStereoMode();
+    });
+    vrOverlay.appendChild(exitBtn);
     document.body.appendChild(vrOverlay);
     enterStereoMode._vrOverlay = vrOverlay;
 
