@@ -1198,7 +1198,8 @@ function enterStereoMode(exitCallback) {
         'width:100vw', 'height:100vh',
         'z-index:10000',
         'display:block',
-        'touch-action:none'
+        'touch-action:none',
+        'pointer-events:none'
     ].join('!important;') + '!important';
     document.body.appendChild(canvas); // Move canvas to body to avoid stacking context issues
 
