@@ -1091,6 +1091,20 @@ window.togglePanel = function () {
     }
 };
 
+// Global resize handler — keeps canvas correct after AR/VR exit + orientation change
+window.addEventListener('resize', () => {
+    if (stereoActive) return; // VR mode has its own resize handler
+    const cont = document.getElementById('canvas-container');
+    if (!cont || !state.renderer) return;
+    const w = cont.offsetWidth || window.innerWidth;
+    const h = cont.offsetHeight || (window.innerHeight - 70);
+    if (w > 0 && h > 0) {
+        state.camera.aspect = w / h;
+        state.camera.updateProjectionMatrix();
+        state.renderer.setSize(w, h);
+    }
+});
+
 function animate() {
     // Cap delta to 100ms: prevents animation jump when page returns from background
     // (e.g. after iOS Quick Look, Android AR/VR session)
@@ -1206,20 +1220,11 @@ function enterStereoMode(exitCallback) {
     // Create an exit button overlay directly on body
     const vrOverlay = document.createElement('div');
     vrOverlay.id = 'vr-overlay';
-    vrOverlay.style.cssText = 'position:fixed;top:16px;right:16px;z-index:10001;';
-    // ✕ button — calls exitCallback so inVR flag stays in sync
+    vrOverlay.style.cssText = 'position:fixed;top:12px;left:12px;z-index:10001;';
+    // ✕ button — top-left, matching iPhone AR exit style
     const exitBtn = document.createElement('button');
-    exitBtn.textContent = '✕ 退出 VR';
-    exitBtn.style.cssText = [
-        'background:rgba(0,0,0,0.6)',
-        'color:#fff',
-        'border:1.5px solid rgba(255,255,255,0.6)',
-        'border-radius:8px',
-        'padding:10px 18px',
-        'font-size:16px',
-        'cursor:pointer',
-        'touch-action:manipulation'
-    ].join(';');
+    exitBtn.textContent = '\u2715';
+    exitBtn.style.cssText = 'background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;touch-action:manipulation;pointer-events:auto;';
     exitBtn.addEventListener('click', () => {
         if (exitCallback) exitCallback(); // toggles inVR + calls exitStereoMode
         else exitStereoMode();
@@ -1389,9 +1394,10 @@ function exitStereoMode() {
     state.camera.quaternion.identity();
     if (_savedCamTarget && state.controls) state.controls.target.copy(_savedCamTarget);
 
-    // Restore rendering — use a short delay so the browser has time to reflow
+    // Restore rendering
     state.renderer.setScissorTest(false);
     state.renderer.autoClear = true;
+    state.renderer.setPixelRatio(window.devicePixelRatio);
     const restoreSize = () => {
         const w = container ? container.offsetWidth : window.innerWidth;
         const h = container ? container.offsetHeight : (window.innerHeight - 70);
@@ -1399,13 +1405,13 @@ function exitStereoMode() {
             state.camera.fov = 45;
             state.camera.aspect = w / h;
             state.camera.updateProjectionMatrix();
-            state.renderer.setSize(w, h, false);
+            state.renderer.setSize(w, h); // updateStyle=true, resets canvas CSS
             state.renderer.setViewport(0, 0, w, h);
         }
         if (state.controls) state.controls.update();
     };
     restoreSize();
-    setTimeout(restoreSize, 100); // retry after browser reflow
+    setTimeout(restoreSize, 150); // retry after browser reflow
 }
 
 
