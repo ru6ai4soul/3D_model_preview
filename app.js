@@ -469,9 +469,10 @@ function setupVRARButtons() {
                     } catch (e) {
                         activeXRSession = null;
                         restoreModelFromXR();
-                        console.error('VR 啟動失敗:', e);
-                        // Fallback to Cardboard if WebXR fails
-                        setupIOSVRFallback(vrButton, floatVR);
+                        if (state.controls) state.controls.enabled = true;
+                        console.error('VR 啓動失敗:', e);
+                        if (e.message && e.message.includes('already')) return;
+                        alert('VR 啓動失敗: ' + e.message);
                     }
                 };
                 vrButton.addEventListener('click', doVR);
@@ -1347,7 +1348,19 @@ function exitStereoMode() {
     // Re-enable OrbitControls
     if (state.controls) state.controls.enabled = true;
 
-    // Restore UI
+    // Remove VR overlay FIRST (before any layout work)
+    const vrOverlay = enterStereoMode._vrOverlay;
+    if (vrOverlay && vrOverlay.parentElement) vrOverlay.parentElement.removeChild(vrOverlay);
+    enterStereoMode._vrOverlay = null;
+
+    // Remove listeners
+    if (enterStereoMode._resizeHandler) {
+        window.removeEventListener('resize', enterStereoMode._resizeHandler);
+        enterStereoMode._resizeHandler = null;
+    }
+    window.removeEventListener('deviceorientation', handleOrientation, true);
+
+    // Restore UI panels FIRST so container gets its real size back
     const panel = document.querySelector('.control-panel');
     const header = document.querySelector('.header');
     if (panel) panel.style.display = '';
@@ -1362,41 +1375,31 @@ function exitStereoMode() {
     // Restore canvas original inline style
     canvas.style.cssText = canvas.dataset.vrOrigStyle || '';
 
-    // Remove VR overlay
-    const vrOverlay = enterStereoMode._vrOverlay;
-    if (vrOverlay && vrOverlay.parentElement) vrOverlay.parentElement.removeChild(vrOverlay);
-    enterStereoMode._vrOverlay = null;
-
     // Restore body background
     document.body.style.background = '';
-
-    // Exit fullscreen if entered
-    if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
-    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-
-    // Remove listeners
-    if (enterStereoMode._resizeHandler) {
-        window.removeEventListener('resize', enterStereoMode._resizeHandler);
-        enterStereoMode._resizeHandler = null;
-    }
-    window.removeEventListener('deviceorientation', handleOrientation, true);
 
     // Restore camera
     if (_savedCamPos) state.camera.position.copy(_savedCamPos);
     state.camera.quaternion.identity();
     if (_savedCamTarget && state.controls) state.controls.target.copy(_savedCamTarget);
 
-    // Restore rendering
+    // Restore rendering — use a short delay so the browser has time to reflow
     state.renderer.setScissorTest(false);
     state.renderer.autoClear = true;
-    const w = container ? container.offsetWidth : window.innerWidth;
-    const h = container ? container.offsetHeight : (window.innerHeight - 70);
-    state.camera.fov = 45;
-    state.camera.aspect = w / h;
-    state.camera.updateProjectionMatrix();
-    state.renderer.setSize(w, h, false);
-    state.renderer.setViewport(0, 0, w, h);
-    if (state.controls) state.controls.update();
+    const restoreSize = () => {
+        const w = container ? container.offsetWidth : window.innerWidth;
+        const h = container ? container.offsetHeight : (window.innerHeight - 70);
+        if (w > 0 && h > 0) {
+            state.camera.fov = 45;
+            state.camera.aspect = w / h;
+            state.camera.updateProjectionMatrix();
+            state.renderer.setSize(w, h, false);
+            state.renderer.setViewport(0, 0, w, h);
+        }
+        if (state.controls) state.controls.update();
+    };
+    restoreSize();
+    setTimeout(restoreSize, 100); // retry after browser reflow
 }
 
 
