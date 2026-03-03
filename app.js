@@ -1254,8 +1254,10 @@ function enterStereoMode(exitCallback) {
     setTimeout(doResize, 200);
     setTimeout(doResize, 600);
     window.addEventListener('resize', doResize);
-    window.addEventListener('orientationchange', () => setTimeout(doResize, 300));
+    const onOrientChange = () => setTimeout(doResize, 300);
+    window.addEventListener('orientationchange', onOrientChange);
     enterStereoMode._resizeHandler = doResize;
+    enterStereoMode._orientHandler = onOrientChange;
 
     // Request gyroscope permission (iOS 13+)
     if (typeof DeviceOrientationEvent !== 'undefined' &&
@@ -1354,64 +1356,81 @@ function renderStereo() {
 }
 
 function exitStereoMode() {
-    stereoActive = false;
+    try {
+        stereoActive = false;
 
-    // Re-enable OrbitControls
-    if (state.controls) state.controls.enabled = true;
+        // Re-enable OrbitControls
+        if (state.controls) state.controls.enabled = true;
 
-    // Remove VR overlay FIRST (before any layout work)
-    const vrOverlay = enterStereoMode._vrOverlay;
-    if (vrOverlay && vrOverlay.parentElement) vrOverlay.parentElement.removeChild(vrOverlay);
-    enterStereoMode._vrOverlay = null;
+        // Remove VR overlay FIRST (before any layout work)
+        const vrOverlay = enterStereoMode._vrOverlay;
+        if (vrOverlay && vrOverlay.parentElement) vrOverlay.parentElement.removeChild(vrOverlay);
+        enterStereoMode._vrOverlay = null;
 
-    // Remove listeners
-    if (enterStereoMode._resizeHandler) {
-        window.removeEventListener('resize', enterStereoMode._resizeHandler);
-        enterStereoMode._resizeHandler = null;
-    }
-    window.removeEventListener('deviceorientation', handleOrientation, true);
-
-    // Restore UI panels FIRST so container gets its real size back
-    const panel = document.querySelector('.control-panel');
-    const header = document.querySelector('.header');
-    if (panel) panel.style.display = '';
-    if (header) header.style.display = '';
-
-    // Move canvas back to its original container
-    const container = document.getElementById('canvas-container');
-    const canvas = state.renderer.domElement;
-    if (container && canvas.parentElement !== container) {
-        container.appendChild(canvas);
-    }
-    // Restore canvas original inline style
-    canvas.style.cssText = canvas.dataset.vrOrigStyle || '';
-
-    // Restore body background
-    document.body.style.background = '';
-
-    // Restore camera
-    if (_savedCamPos) state.camera.position.copy(_savedCamPos);
-    state.camera.quaternion.identity();
-    if (_savedCamTarget && state.controls) state.controls.target.copy(_savedCamTarget);
-
-    // Restore rendering
-    state.renderer.setScissorTest(false);
-    state.renderer.autoClear = true;
-    state.renderer.setPixelRatio(window.devicePixelRatio);
-    const restoreSize = () => {
-        const w = container ? container.offsetWidth : window.innerWidth;
-        const h = container ? container.offsetHeight : (window.innerHeight - 70);
-        if (w > 0 && h > 0) {
-            state.camera.fov = 45;
-            state.camera.aspect = w / h;
-            state.camera.updateProjectionMatrix();
-            state.renderer.setSize(w, h); // updateStyle=true, resets canvas CSS
-            state.renderer.setViewport(0, 0, w, h);
+        // Remove ALL VR listeners (including orientationchange)
+        if (enterStereoMode._resizeHandler) {
+            window.removeEventListener('resize', enterStereoMode._resizeHandler);
+            enterStereoMode._resizeHandler = null;
         }
-        if (state.controls) state.controls.update();
-    };
-    restoreSize();
-    setTimeout(restoreSize, 150); // retry after browser reflow
+        if (enterStereoMode._orientHandler) {
+            window.removeEventListener('orientationchange', enterStereoMode._orientHandler);
+            enterStereoMode._orientHandler = null;
+        }
+        window.removeEventListener('deviceorientation', handleOrientation, true);
+
+        // Restore UI panels FIRST so container gets its real size back
+        const panel = document.querySelector('.control-panel');
+        const header = document.querySelector('.header');
+        if (panel) panel.style.display = '';
+        if (header) header.style.display = '';
+
+        // Move canvas back to its original container
+        const container = document.getElementById('canvas-container');
+        const canvas = state.renderer.domElement;
+        if (container && canvas.parentElement !== container) {
+            container.appendChild(canvas);
+        }
+
+        // Explicitly clear every VR CSS property (iOS Safari unreliable with cssText for !important)
+        canvas.style.position = '';
+        canvas.style.top = '';
+        canvas.style.left = '';
+        canvas.style.width = '';
+        canvas.style.height = '';
+        canvas.style.zIndex = '';
+        canvas.style.display = '';
+        canvas.style.touchAction = '';
+        canvas.style.pointerEvents = '';
+
+        // Restore body background
+        document.body.style.background = '';
+
+        // Restore camera
+        if (_savedCamPos) state.camera.position.copy(_savedCamPos);
+        state.camera.quaternion.identity();
+        if (_savedCamTarget && state.controls) state.controls.target.copy(_savedCamTarget);
+
+        // Restore rendering
+        state.renderer.setScissorTest(false);
+        state.renderer.autoClear = true;
+        state.renderer.setPixelRatio(window.devicePixelRatio);
+        const restoreSize = () => {
+            const w = container ? container.offsetWidth : window.innerWidth;
+            const h = container ? container.offsetHeight : (window.innerHeight - 70);
+            if (w > 0 && h > 0) {
+                state.camera.fov = 45;
+                state.camera.aspect = w / h;
+                state.camera.updateProjectionMatrix();
+                state.renderer.setSize(w, h);
+                state.renderer.setViewport(0, 0, w, h);
+            }
+            if (state.controls) state.controls.update();
+        };
+        restoreSize();
+        setTimeout(restoreSize, 150);
+    } catch (err) {
+        console.error('[VR] exitStereoMode error:', err);
+    }
 }
 
 
