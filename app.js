@@ -1173,6 +1173,69 @@ function _initGyroConstants() {
     if (!_q1) _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 }
 
+// VR Debug: direction markers
+let _vrDebugGroup = null;
+
+function _addVRDebugMarkers() {
+    _removeVRDebugMarkers(); // clean up previous
+    const camPos = state.camera.position;
+    const D = 5; // distance from camera
+    _vrDebugGroup = new THREE.Group();
+    _vrDebugGroup.name = '__vrDebug__';
+
+    const dirs = [
+        { label: '前 FRONT (-Z)', color: '#2266ff', pos: [0, 0, -D] },
+        { label: '後 BACK (+Z)', color: '#ff3333', pos: [0, 0, D] },
+        { label: '左 LEFT (-X)', color: '#33cc33', pos: [-D, 0, 0] },
+        { label: '右 RIGHT (+X)', color: '#ffaa00', pos: [D, 0, 0] },
+        { label: '上 UP (+Y)', color: '#ffffff', pos: [0, D, 0] },
+        { label: '下 DOWN (-Y)', color: '#888888', pos: [0, -D, 0] },
+    ];
+
+    dirs.forEach(d => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512; canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = d.color;
+        ctx.globalAlpha = 0.6;
+        ctx.fillRect(0, 0, 512, 256);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 40px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(d.label, 256, 128);
+        const tex = new THREE.CanvasTexture(canvas);
+        const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+        const sprite = new THREE.Sprite(mat);
+        sprite.scale.set(3, 1.5, 1);
+        sprite.position.set(camPos.x + d.pos[0], camPos.y + d.pos[1], camPos.z + d.pos[2]);
+        _vrDebugGroup.add(sprite);
+    });
+
+    // Also add a small red sphere at model center for reference
+    if (state.currentModel) {
+        const box = new THREE.Box3().setFromObject(state.currentModel);
+        const center = box.getCenter(new THREE.Vector3());
+        const dot = new THREE.Mesh(
+            new THREE.SphereGeometry(0.1, 8, 8),
+            new THREE.MeshBasicMaterial({ color: 0xff0000 })
+        );
+        dot.position.copy(center);
+        _vrDebugGroup.add(dot);
+        console.log('[VR DEBUG] Camera:', camPos.x.toFixed(2), camPos.y.toFixed(2), camPos.z.toFixed(2));
+        console.log('[VR DEBUG] Model center:', center.x.toFixed(2), center.y.toFixed(2), center.z.toFixed(2));
+    }
+
+    state.scene.add(_vrDebugGroup);
+}
+
+function _removeVRDebugMarkers() {
+    if (_vrDebugGroup && state.scene) {
+        state.scene.remove(_vrDebugGroup);
+        _vrDebugGroup = null;
+    }
+}
 function enterStereoMode(exitCallback) {
     // Always clean up any previous session's listeners before starting a new one
     // This fixes Android: second VR entry no longer stacks duplicate listeners
@@ -1206,6 +1269,9 @@ function enterStereoMode(exitCallback) {
     }
     state.camera.fov = 80;
     state.camera.updateProjectionMatrix();
+
+    // === VR DEBUG: Add direction markers around camera ===
+    _addVRDebugMarkers();
 
     // Hide UI
     const panel = document.querySelector('.control-panel');
@@ -1369,6 +1435,9 @@ function renderStereo() {
 function exitStereoMode() {
     try {
         stereoActive = false;
+
+        // Remove VR debug markers
+        _removeVRDebugMarkers();
 
         // Re-enable OrbitControls
         if (state.controls) state.controls.enabled = true;
