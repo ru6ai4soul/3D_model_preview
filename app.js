@@ -1092,7 +1092,7 @@ window.togglePanel = function () {
 };
 
 // Global resize handler — keeps canvas correct after AR/VR exit + orientation change
-window.addEventListener('resize', () => {
+const _globalResize = () => {
     if (stereoActive) return; // VR mode has its own resize handler
     const cont = document.getElementById('canvas-container');
     if (!cont || !state.renderer) return;
@@ -1103,7 +1103,9 @@ window.addEventListener('resize', () => {
         state.camera.updateProjectionMatrix();
         state.renderer.setSize(w, h);
     }
-});
+};
+window.addEventListener('resize', _globalResize);
+window.addEventListener('orientationchange', () => setTimeout(_globalResize, 300));
 
 function animate() {
     // Cap delta to 100ms: prevents animation jump when page returns from background
@@ -1185,13 +1187,15 @@ function enterStereoMode(exitCallback) {
     _savedCamPos = state.camera.position.clone();
     _savedCamTarget = state.controls ? state.controls.target.clone() : new THREE.Vector3();
 
-    // Position camera at model
+    // Position camera facing the model from the front, accounting for screen orientation
     if (state.currentModel) {
         const box = new THREE.Box3().setFromObject(state.currentModel);
         const center = box.getCenter(new THREE.Vector3());
         const sz = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(sz.x, sz.y, sz.z);
+        // Always place camera along +Z from center ("in front"), then lookAt
         state.camera.position.copy(center).add(new THREE.Vector3(0, 0, maxDim * 2));
+        state.camera.lookAt(center);
     }
     state.camera.fov = 80;
     state.camera.updateProjectionMatrix();
@@ -1366,6 +1370,8 @@ function exitStereoMode() {
         const vrOverlay = enterStereoMode._vrOverlay;
         if (vrOverlay && vrOverlay.parentElement) vrOverlay.parentElement.removeChild(vrOverlay);
         enterStereoMode._vrOverlay = null;
+        // Also remove any lingering vr-overlay elements (safety net)
+        document.querySelectorAll('#vr-overlay').forEach(el => el.remove());
 
         // Remove ALL VR listeners (including orientationchange)
         if (enterStereoMode._resizeHandler) {
