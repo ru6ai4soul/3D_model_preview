@@ -498,6 +498,14 @@ function setupVRARButtons() {
     function setupIOSVRFallback(vBtn, fVBtn) {
         showBtn(vBtn, fVBtn);
         let inVR = false;
+        const isPortraitOrientation = () => {
+            // Use window.orientation: 0/180 = portrait, ±90 = landscape
+            // Falls back to dimension check if API unavailable
+            if (typeof window.orientation !== 'undefined') {
+                return Math.abs(window.orientation) !== 90;
+            }
+            return window.innerWidth < window.innerHeight;
+        };
         const doEnterVR = () => {
             state.camera.fov = 80;
             state.camera.updateProjectionMatrix();
@@ -510,7 +518,7 @@ function setupVRARButtons() {
             inVR = !inVR;
             if (inVR) {
                 // If phone is in portrait, show rotate-to-landscape hint first
-                if (window.innerWidth < window.innerHeight) {
+                if (isPortraitOrientation()) {
                     inVR = false; // revert — we haven't actually entered yet
                     const hint = document.createElement('div');
                     hint.id = 'vr-rotate-hint';
@@ -518,14 +526,17 @@ function setupVRARButtons() {
                     hint.innerHTML = '<div style="font-size:60px">📱↔️</div><div>請橫拿手機再進入 VR 模式</div><button id="vr-hint-cancel" style="margin-top:12px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:8px 20px;font-size:15px;cursor:pointer;">取消</button>';
                     document.body.appendChild(hint);
                     const onOrient = () => {
-                        if (window.innerWidth >= window.innerHeight) {
-                            window.removeEventListener('orientationchange', onOrient);
-                            setTimeout(() => {
-                                hint.remove();
-                                inVR = true;
-                                doEnterVR();
-                            }, 400);
-                        }
+                        // Check orientation value after short delay for iOS
+                        setTimeout(() => {
+                            if (!isPortraitOrientation()) {
+                                window.removeEventListener('orientationchange', onOrient);
+                                setTimeout(() => {
+                                    hint.remove();
+                                    inVR = true;
+                                    doEnterVR();
+                                }, 300);
+                            }
+                        }, 100);
                     };
                     window.addEventListener('orientationchange', onOrient);
                     document.getElementById('vr-hint-cancel').addEventListener('click', () => {
@@ -1351,12 +1362,14 @@ function enterStereoMode(exitCallback) {
         screen.orientation.lock('landscape').catch(() => { }); // works on Android
     }
 
-    // Resize: run immediately + on change
+    // Freeze VR dimensions at entry so phone rotation mid-session doesn't resize renderer
+    const vrW = window.innerWidth;
+    const vrH = window.innerHeight;
+
+    // Resize: use frozen entry dimensions — prevents mid-session rotation from breaking display
     const doResize = () => {
-        const w = window.innerWidth;
-        const h = window.innerHeight;
-        state.renderer.setSize(w, h);
-        state.camera.aspect = (w / 2) / h;
+        state.renderer.setSize(vrW, vrH);
+        state.camera.aspect = (vrW / 2) / vrH;
         state.camera.updateProjectionMatrix();
     };
     doResize();
