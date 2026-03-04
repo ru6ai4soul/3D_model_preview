@@ -1362,7 +1362,7 @@ function handleOrientation(event) {
 
     // Capture initial alpha as forward + compensate for screen orientation
     if (_firstAlpha === null) _firstAlpha = alpha;
-    const adjustedAlpha = alpha - _firstAlpha - (window.orientation || 0);
+    const adjustedAlpha = alpha - _firstAlpha + (window.orientation || 0);
 
     const a = THREE.MathUtils.degToRad(adjustedAlpha);
     const b = THREE.MathUtils.degToRad(beta);
