@@ -174,12 +174,12 @@ function setupVRARButtons() {
 
 
     // Scale/restore model for XR modes
-    let savedScale = null, savedPos = null;
+    let savedScale = null, savedPos = null, savedRot = null;
 
     // Scale model for XR: scale THEN re-measure bounding box for correct placement.
     // Two-step is mathematically foolproof regardless of model's current transform.
 
-    // AR: 0.5m tall, bottom at y=0 (floor), 0.8m in front
+    // AR: 0.5m tall, centered, 0.8m in front, 0.3m below device (table level)
     function scaleForAR() {
         if (!state.currentModel) return;
         const box0 = new THREE.Box3().setFromObject(state.currentModel);
@@ -188,14 +188,15 @@ function setupVRARButtons() {
         if (!maxDim) return;
         savedScale = state.currentModel.scale.clone();
         savedPos = state.currentModel.position.clone();
+        savedRot = state.currentModel.quaternion.clone();
         // Step 1: apply scale
         const sf = state.currentModel.scale.x * (0.5 / maxDim);
         state.currentModel.scale.set(sf, sf, sf);
         // Step 2: re-measure AFTER scaling → correct positions
         const box1 = new THREE.Box3().setFromObject(state.currentModel);
         const c1 = box1.getCenter(new THREE.Vector3());
-        state.currentModel.position.x += (0 - c1.x);      // center horizontally
-        state.currentModel.position.y += (0 - box1.min.y); // sit on floor y=0
+        state.currentModel.position.x += (0 - c1.x);        // center horizontally
+        state.currentModel.position.y += (-0.3 - box1.min.y); // 0.3m below device (table level)
         state.currentModel.position.z += (-0.8 - c1.z);      // 0.8m in front
     }
 
@@ -208,6 +209,7 @@ function setupVRARButtons() {
         if (!maxDim) return;
         savedScale = state.currentModel.scale.clone();
         savedPos = state.currentModel.position.clone();
+        savedRot = state.currentModel.quaternion.clone();
         // Step 1: apply scale — target 2m max dimension
         const sf = state.currentModel.scale.x * (2.0 / maxDim);
         state.currentModel.scale.set(sf, sf, sf);
@@ -223,8 +225,10 @@ function setupVRARButtons() {
         if (!state.currentModel || !savedScale) return;
         state.currentModel.scale.copy(savedScale);
         state.currentModel.position.copy(savedPos);
+        if (savedRot) state.currentModel.quaternion.copy(savedRot);
         savedScale = null;
         savedPos = null;
+        savedRot = null;
     }
 
     async function endActiveSession() {
@@ -1105,7 +1109,10 @@ const _globalResize = () => {
     }
 };
 window.addEventListener('resize', _globalResize);
-window.addEventListener('orientationchange', () => setTimeout(_globalResize, 300));
+window.addEventListener('orientationchange', () => {
+    setTimeout(_globalResize, 300);
+    setTimeout(_globalResize, 600);
+});
 
 function animate() {
     // Cap delta to 100ms: prevents animation jump when page returns from background
@@ -1187,15 +1194,15 @@ function enterStereoMode(exitCallback) {
     _savedCamPos = state.camera.position.clone();
     _savedCamTarget = state.controls ? state.controls.target.clone() : new THREE.Vector3();
 
-    // Position camera facing the model from the front, accounting for screen orientation
+    // Position camera facing the model from the front
     if (state.currentModel) {
         const box = new THREE.Box3().setFromObject(state.currentModel);
         const center = box.getCenter(new THREE.Vector3());
         const sz = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(sz.x, sz.y, sz.z);
-        // Always place camera along +Z from center ("in front"), then lookAt
-        state.camera.position.copy(center).add(new THREE.Vector3(0, 0, maxDim * 2));
-        state.camera.lookAt(center);
+        // Camera closer to model for better VR presence
+        state.camera.position.copy(center).add(new THREE.Vector3(0, 0, maxDim * 1.2));
+        // Don't call lookAt — gyroscope will set orientation via _firstAlpha
     }
     state.camera.fov = 80;
     state.camera.updateProjectionMatrix();
