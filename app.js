@@ -1163,6 +1163,7 @@ let deviceControls = null;
 // --- Gyroscope state ---
 let _alphaOffset = 0;
 let _firstAlpha = null;
+let _vrEntryOrientation = 0; // locked at VR entry, never changes mid-session
 let _zee = null;  // lazy init — THREE may not be ready at parse time
 let _q1 = null;
 let _savedCamPos = null;
@@ -1249,6 +1250,7 @@ function enterStereoMode(exitCallback) {
     _initGyroConstants();
     stereoActive = true;
     _firstAlpha = null;
+    _vrEntryOrientation = window.orientation || 0; // freeze orientation at entry
 
     // Disable OrbitControls
     if (state.controls) state.controls.enabled = false;
@@ -1362,7 +1364,7 @@ function handleOrientation(event) {
 
     // Capture initial alpha as forward + compensate for screen orientation
     if (_firstAlpha === null) _firstAlpha = alpha;
-    const adjustedAlpha = alpha - _firstAlpha + (window.orientation || 0);
+    const adjustedAlpha = alpha - _firstAlpha + _vrEntryOrientation;
 
     const a = THREE.MathUtils.degToRad(adjustedAlpha);
     const b = THREE.MathUtils.degToRad(beta);
@@ -1373,8 +1375,8 @@ function handleOrientation(event) {
     const q = new THREE.Quaternion().setFromEuler(euler);
     q.multiply(_q1); // phone Y-up -> WebGL Z-forward
 
-    // Screen orientation compensation
-    const orient = THREE.MathUtils.degToRad(window.orientation || 0);
+    // Screen orientation compensation (fixed at VR entry)
+    const orient = THREE.MathUtils.degToRad(_vrEntryOrientation);
     const screenQ = new THREE.Quaternion().setFromAxisAngle(_zee, -orient);
     q.multiply(screenQ);
 
