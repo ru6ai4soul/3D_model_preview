@@ -1321,31 +1321,48 @@ function enterStereoMode(exitCallback) {
     if (panel) panel.style.display = 'none';
     if (header) header.style.display = 'none';
 
-    // *** KEY FIX: directly make the CANVAS position:fixed fullscreen ***
-    // This bypasses iOS Safari container layout issues entirely.
+    // *** Canvas fullscreen with orientation-lock via CSS transform ***
     const canvas = state.renderer.domElement;
     canvas.dataset.vrOrigStyle = canvas.getAttribute('style') || '';
-    canvas.style.cssText = [
-        'position:fixed',
-        'top:0', 'left:0',
-        'width:100vw', 'height:100vh',
-        'z-index:10000',
-        'display:block',
-        'touch-action:none',
-        'pointer-events:none'
-    ].join('!important;') + '!important';
-    document.body.appendChild(canvas); // Move canvas to body to avoid stacking context issues
+
+    // Freeze landscape dimensions at entry (user always enters from landscape due to hint)
+    const vrW = window.innerWidth;
+    const vrH = window.innerHeight;
+
+    // Apply landscape canvas CSS
+    const setLandscapeCSS = () => {
+        canvas.style.cssText = [
+            'position:fixed', 'top:0', 'left:0',
+            `width:${vrW}px`, `height:${vrH}px`,
+            'z-index:10000', 'display:block',
+            'touch-action:none', 'pointer-events:none'
+        ].join('!important;') + '!important';
+    };
+    // Apply rotated CSS when phone is in portrait (keeps canvas looking landscape)
+    const setPortraitRotatedCSS = () => {
+        // In portrait: screen is vrH wide × vrW tall (swapped)
+        // Canvas: vrW × vrH, rotated 90° CW around top-left, then shifted right
+        canvas.style.cssText = [
+            'position:fixed', 'top:0', `left:${vrH}px`,
+            `width:${vrW}px`, `height:${vrH}px`,
+            'transform:rotate(90deg)', 'transform-origin:top left',
+            'z-index:10000', 'display:block',
+            'touch-action:none', 'pointer-events:none'
+        ].join('!important;') + '!important';
+    };
+
+    setLandscapeCSS();
+    document.body.appendChild(canvas);
 
     // Create an exit button overlay directly on body
     const vrOverlay = document.createElement('div');
     vrOverlay.id = 'vr-overlay';
     vrOverlay.style.cssText = 'position:fixed;top:12px;left:12px;z-index:10001;';
-    // ✕ button — top-left, matching iPhone AR exit style
     const exitBtn = document.createElement('button');
     exitBtn.textContent = '\u2715';
     exitBtn.style.cssText = 'background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;touch-action:manipulation;pointer-events:auto;';
     exitBtn.addEventListener('click', () => {
-        if (exitCallback) exitCallback(); // toggles inVR + calls exitStereoMode
+        if (exitCallback) exitCallback();
         else exitStereoMode();
     });
     vrOverlay.appendChild(exitBtn);
@@ -1359,24 +1376,31 @@ function enterStereoMode(exitCallback) {
     _vrEntryOrientation = window.orientation || 0;
 
     if (screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('landscape').catch(() => { }); // works on Android
+        screen.orientation.lock('landscape').catch(() => { });
     }
 
-    // Freeze VR dimensions at entry so phone rotation mid-session doesn't resize renderer
-    const vrW = window.innerWidth;
-    const vrH = window.innerHeight;
+    // Renderer always uses frozen landscape dimensions
+    state.renderer.setSize(vrW, vrH, false);
+    state.camera.aspect = (vrW / 2) / vrH;
+    state.camera.updateProjectionMatrix();
 
-    // Resize: use frozen entry dimensions — prevents mid-session rotation from breaking display
+    // Orientation change handler: reactively apply/remove CSS transform
     const doResize = () => {
-        state.renderer.setSize(vrW, vrH);
-        state.camera.aspect = (vrW / 2) / vrH;
-        state.camera.updateProjectionMatrix();
+        const isNowPortrait = (typeof window.orientation !== 'undefined')
+            ? Math.abs(window.orientation) !== 90
+            : (window.innerWidth < window.innerHeight);
+        if (isNowPortrait) {
+            setPortraitRotatedCSS();
+        } else {
+            setLandscapeCSS();
+        }
+        // Renderer size stays frozen — no need to change
     };
-    doResize();
+    // Also run after short delay in case initial layout isn't settled
     setTimeout(doResize, 200);
     setTimeout(doResize, 600);
     window.addEventListener('resize', doResize);
-    const onOrientChange = () => setTimeout(doResize, 300);
+    const onOrientChange = () => setTimeout(doResize, 200);
     window.addEventListener('orientationchange', onOrientChange);
     enterStereoMode._resizeHandler = doResize;
     enterStereoMode._orientHandler = onOrientChange;
