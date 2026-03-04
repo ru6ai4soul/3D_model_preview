@@ -498,15 +498,44 @@ function setupVRARButtons() {
     function setupIOSVRFallback(vBtn, fVBtn) {
         showBtn(vBtn, fVBtn);
         let inVR = false;
+        const doEnterVR = () => {
+            state.camera.fov = 80;
+            state.camera.updateProjectionMatrix();
+            enterStereoMode(doCardboard);
+            vBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
+            if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
+        };
         const doCardboard = () => {
             if (!state.currentModel) { alert('請先載入模型'); return; }
             inVR = !inVR;
             if (inVR) {
-                state.camera.fov = 80;
-                state.camera.updateProjectionMatrix();
-                enterStereoMode(doCardboard); // pass exit callback
-                vBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
-                if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
+                // If phone is in portrait, show rotate-to-landscape hint first
+                if (window.innerWidth < window.innerHeight) {
+                    inVR = false; // revert — we haven't actually entered yet
+                    const hint = document.createElement('div');
+                    hint.id = 'vr-rotate-hint';
+                    hint.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:16px;';
+                    hint.innerHTML = '<div style="font-size:60px">📱↔️</div><div>請橫拿手機再進入 VR 模式</div><button id="vr-hint-cancel" style="margin-top:12px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:8px 20px;font-size:15px;cursor:pointer;">取消</button>';
+                    document.body.appendChild(hint);
+                    const onOrient = () => {
+                        if (window.innerWidth >= window.innerHeight) {
+                            window.removeEventListener('orientationchange', onOrient);
+                            setTimeout(() => {
+                                hint.remove();
+                                inVR = true;
+                                doEnterVR();
+                            }, 400);
+                        }
+                    };
+                    window.addEventListener('orientationchange', onOrient);
+                    document.getElementById('vr-hint-cancel').addEventListener('click', () => {
+                        window.removeEventListener('orientationchange', onOrient);
+                        hint.remove();
+                        inVR = false;
+                    });
+                } else {
+                    doEnterVR();
+                }
             } else {
                 exitStereoMode();
                 vBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
@@ -1315,51 +1344,20 @@ function enterStereoMode(exitCallback) {
     // Background black
     document.body.style.background = '#000';
 
-    // Landscape lock:
-    // iOS Safari doesn't support screen.orientation.lock(), so we force landscape
-    // by rotating the canvas 90deg with CSS transform when entering in portrait.
-    const isPortrait = window.innerWidth < window.innerHeight;
-    if (isPortrait) {
-        // Rotate canvas to landscape and expand to fill screen
-        canvas.style.cssText = [
-            'position:fixed',
-            'top:0', 'left:0',
-            `width:${window.innerHeight}px`, // swapped
-            `height:${window.innerWidth}px`,  // swapped
-            'transform:rotate(90deg)',
-            `transform-origin:${window.innerWidth / 2}px ${window.innerWidth / 2}px`,
-            'z-index:10000',
-            'display:block',
-            'touch-action:none',
-            'pointer-events:none'
-        ].join('!important;') + '!important';
-        _vrEntryOrientation = -90; // treat as landscape-right
-    } else {
-        // Already landscape — no rotation needed
-        canvas.style.cssText = [
-            'position:fixed',
-            'top:0', 'left:0',
-            'width:100vw', 'height:100vh',
-            'z-index:10000',
-            'display:block',
-            'touch-action:none',
-            'pointer-events:none'
-        ].join('!important;') + '!important';
-        _vrEntryOrientation = window.orientation || 0;
-    }
+    // Lock entry orientation (affects gyroscope compensation)
+    _vrEntryOrientation = window.orientation || 0;
+
     if (screen.orientation && screen.orientation.lock) {
         screen.orientation.lock('landscape').catch(() => { }); // works on Android
     }
 
     // Resize: run immediately + on change
-    // When we forced landscape via CSS rotate, use landscape dimensions (w and h swapped)
     const doResize = () => {
-        const lW = isPortrait ? window.innerHeight : window.innerWidth;  // landscape width
-        const lH = isPortrait ? window.innerWidth : window.innerHeight;  // landscape height
-        state.renderer.setSize(lW, lH, false); // false = don't update canvas CSS (preserve transform)
-        state.camera.aspect = (lW / 2) / lH;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        state.renderer.setSize(w, h);
+        state.camera.aspect = (w / 2) / h;
         state.camera.updateProjectionMatrix();
-        console.log('[VR] Resized to', lW, 'x', lH, '(landscape), halfW=', Math.floor(lW / 2));
     };
     doResize();
     setTimeout(doResize, 200);
