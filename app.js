@@ -210,6 +210,10 @@ function setupVRARButtons() {
         savedScale = state.currentModel.scale.clone();
         savedPos = state.currentModel.position.clone();
         savedRot = state.currentModel.quaternion.clone();
+
+        // Reset rotation from AR or user input so it faces forward cleanly
+        state.currentModel.quaternion.identity();
+
         // Step 1: apply scale — target 2m max dimension
         const sf = state.currentModel.scale.x * (2.0 / maxDim);
         state.currentModel.scale.set(sf, sf, sf);
@@ -464,6 +468,9 @@ function setupVRARButtons() {
 
                         await state.renderer.xr.setSession(session);
 
+                        // === WebXR DEBUG MARKERS ===
+                        _addVRDebugMarkers();
+
                         vrButton.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
                         if (floatVR) floatVR.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
 
@@ -471,6 +478,7 @@ function setupVRARButtons() {
                             activeXRSession = null;
                             startXRCooldown(1200);
                             if (state.controls) state.controls.enabled = true;
+                            _removeVRDebugMarkers();
                             restoreAfterXR();
                             vrButton.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
                             if (floatVR) floatVR.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
@@ -515,42 +523,62 @@ function setupVRARButtons() {
         };
         const doCardboard = () => {
             if (!state.currentModel) { alert('請先載入模型'); return; }
-            inVR = !inVR;
-            if (inVR) {
-                // If phone is in portrait, show rotate-to-landscape hint first
-                if (isPortraitOrientation()) {
-                    inVR = false; // revert — we haven't actually entered yet
-                    const hint = document.createElement('div');
-                    hint.id = 'vr-rotate-hint';
-                    hint.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:16px;';
-                    hint.innerHTML = '<div style="font-size:60px">📱↔️</div><div>請橫拿手機再進入 VR 模式</div><button id="vr-hint-cancel" style="margin-top:12px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:8px 20px;font-size:15px;cursor:pointer;">取消</button>';
-                    document.body.appendChild(hint);
-                    const onOrient = () => {
-                        // Check orientation value after short delay for iOS
-                        setTimeout(() => {
-                            if (!isPortraitOrientation()) {
-                                window.removeEventListener('orientationchange', onOrient);
-                                setTimeout(() => {
-                                    hint.remove();
-                                    inVR = true;
-                                    doEnterVR();
-                                }, 300);
-                            }
-                        }, 100);
-                    };
-                    window.addEventListener('orientationchange', onOrient);
-                    document.getElementById('vr-hint-cancel').addEventListener('click', () => {
-                        window.removeEventListener('orientationchange', onOrient);
-                        hint.remove();
-                        inVR = false;
-                    });
+
+            const proceedToVR = () => {
+                inVR = !inVR;
+                if (inVR) {
+                    // If phone is in portrait, show rotate-to-landscape hint first
+                    if (isPortraitOrientation()) {
+                        inVR = false; // revert — we haven't actually entered yet
+                        const hint = document.createElement('div');
+                        hint.id = 'vr-rotate-hint';
+                        hint.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:16px;';
+                        hint.innerHTML = '<div style="font-size:60px">📱↔️</div><div>請橫拿手機再進入 VR 模式</div><button id="vr-hint-cancel" style="margin-top:12px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:8px 20px;font-size:15px;cursor:pointer;">取消</button>';
+                        document.body.appendChild(hint);
+                        const onOrient = () => {
+                            // Check orientation value after short delay for iOS
+                            setTimeout(() => {
+                                if (!isPortraitOrientation()) {
+                                    window.removeEventListener('orientationchange', onOrient);
+                                    setTimeout(() => {
+                                        if (document.getElementById('vr-rotate-hint')) {
+                                            hint.remove();
+                                            inVR = true;
+                                            doEnterVR();
+                                        }
+                                    }, 300);
+                                }
+                            }, 100);
+                        };
+                        window.addEventListener('orientationchange', onOrient);
+                        document.getElementById('vr-hint-cancel').addEventListener('click', () => {
+                            window.removeEventListener('orientationchange', onOrient);
+                            hint.remove();
+                            inVR = false;
+                        });
+                    } else {
+                        doEnterVR();
+                    }
                 } else {
-                    doEnterVR();
+                    exitStereoMode();
+                    vBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
+                    if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
                 }
+            };
+
+            // Request Gyro synchronously on button click (needed for iOS Safari!)
+            if (!inVR && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            proceedToVR();
+                        } else {
+                            alert('必須允許動作與方向存取，才能使用 VR 功能');
+                        }
+                    })
+                    .catch(() => proceedToVR());
             } else {
-                exitStereoMode();
-                vBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
-                if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
+                proceedToVR();
             }
         };
         vBtn.addEventListener('click', doCardboard);
@@ -1405,15 +1433,8 @@ function enterStereoMode(exitCallback) {
     enterStereoMode._resizeHandler = doResize;
     enterStereoMode._orientHandler = onOrientChange;
 
-    // Request gyroscope permission (iOS 13+)
-    if (typeof DeviceOrientationEvent !== 'undefined' &&
-        typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission()
-            .then(p => { if (p === 'granted') startGyro(); })
-            .catch(e => { console.warn('Gyro denied:', e); startGyro(); });
-    } else {
-        startGyro();
-    }
+    // Since we requested permission in doCardboard synchronously, we can just start
+    startGyro();
 }
 
 function startGyro() {
@@ -1552,6 +1573,8 @@ function exitStereoMode() {
         canvas.style.display = '';
         canvas.style.touchAction = '';
         canvas.style.pointerEvents = '';
+        canvas.style.transform = '';
+        canvas.style.transformOrigin = '';
 
         // Restore body background
         document.body.style.background = '';
