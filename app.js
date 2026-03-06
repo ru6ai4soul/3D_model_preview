@@ -503,45 +503,64 @@ function setupVRARButtons() {
         setupIOSVRFallback(vrButton, floatVR);
     }
 
-    // Global helper for iOS Lock Guide
-    window.showIOSLockGuide = function (onConfirm, onCancel) {
+    // Global helper for iOS VR Entry Sequence (4 steps)
+    window.executeIOSVREntrySequence = function (onSuccess, onCancel) {
         if (!isIOS) {
-            if (onConfirm) onConfirm();
+            if (onSuccess) onSuccess();
             return;
         }
-        if (document.getElementById('ios-lock-guide')) return;
 
-        const guide = document.createElement('div');
-        guide.id = 'ios-lock-guide';
-        guide.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:20px;text-align:center;padding:24px;';
+        const overlay = document.createElement('div');
+        overlay.id = 'vr-entry-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:20px;text-align:center;padding:24px;';
 
-        guide.innerHTML = `
+        // Step 1: Prompt to lock portrait
+        overlay.innerHTML = `
             <div style="font-size:60px; margin-bottom:10px;">📱🔒</div>
-            <div style="line-height:1.6;max-width:300px;font-size:16px;">
-                為了獲得最佳 VR 體驗，請<b>鎖定手機方向</b>並保持<b>橫式</b>。
+            <div style="line-height:1.6;max-width:300px;font-size:18px;">
+                1. 請先將手機<b style="color:#ffcc00;">鎖定為直式</b>方向<br>
+                <span style="font-size:14px;color:#aaa;">(開啟控制中心的直向鎖定)</span>
             </div>
-            <button id="ios-guide-confirm" style="margin-top:20px;background:#6a4cff;color:#fff;border:none;border-radius:24px;padding:14px 28px;font-size:16px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(106,76,255,0.4);">
-                我已鎖定，開始體驗
+            <button id="step1-btn" style="margin-top:20px;background:#6a4cff;color:#fff;border:none;border-radius:24px;padding:14px 28px;font-size:16px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(106,76,255,0.4);">
+                我已鎖定
             </button>
-            ${onCancel ? `<button id="ios-guide-cancel" style="margin-top:8px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;">取消</button>` : ''}
+            <button id="cancel-btn" style="margin-top:8px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;">取消</button>
         `;
-        document.body.appendChild(guide);
+        document.body.appendChild(overlay);
+        overlay.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
-        // Prevent default touch behaviors on the guide
-        guide.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-
-        document.getElementById('ios-guide-confirm').addEventListener('click', () => {
-            guide.remove();
-            window._iosLockAcknowledged = true;
-            if (onConfirm) onConfirm();
+        document.getElementById('cancel-btn').addEventListener('click', () => {
+            overlay.remove();
+            if (onCancel) onCancel();
         });
 
-        if (onCancel) {
-            document.getElementById('ios-guide-cancel').addEventListener('click', () => {
-                guide.remove();
-                onCancel();
+        document.getElementById('step1-btn').addEventListener('click', () => {
+            // Step 2: Prompt to physically rotate sideways
+            overlay.innerHTML = `
+                <div style="font-size:60px; margin-bottom:10px;">📱➡️📺</div>
+                <div style="line-height:1.6;max-width:300px;font-size:18px;">
+                    2. 現在請將手機<b style="color:#ffcc00;">打橫</b>
+                </div>
+                <button id="cancel-btn-2" style="margin-top:30px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;">取消</button>
+            `;
+
+            // Use gyroscope to detect physical landscape since portrait lock blocks 'orientationchange'
+            const checkLandscape = (e) => {
+                // gamma is left/right tilt. +/- 90 is landscape. We threshold at 45.
+                if (Math.abs(e.gamma) > 45) {
+                    window.removeEventListener('deviceorientation', checkLandscape);
+                    overlay.remove();
+                    if (onSuccess) onSuccess();
+                }
+            };
+            window.addEventListener('deviceorientation', checkLandscape);
+
+            document.getElementById('cancel-btn-2').addEventListener('click', () => {
+                window.removeEventListener('deviceorientation', checkLandscape);
+                overlay.remove();
+                if (onCancel) onCancel();
             });
-        }
+        });
     };
 
     function setupIOSVRFallback(vBtn, fVBtn) {
@@ -573,7 +592,7 @@ function setupVRARButtons() {
                     };
 
                     if (isIOS) {
-                        window.showIOSLockGuide(executeVRLogic, () => { inVR = false; });
+                        window.executeIOSVREntrySequence(executeVRLogic, () => { inVR = false; });
                     } else {
                         executeVRLogic();
                     }
@@ -1454,17 +1473,9 @@ function enterStereoMode(exitCallback) {
         if (isNowPortrait) {
             setPortraitRotatedCSS();
             window._effectiveScreenOrientation = 90;
-            // User accidentally rotated to portrait mid-session (and is iOS), show lock guide to prevent tearing
-            if (isIOS && !window._iosLockAcknowledged) {
-                window.showIOSLockGuide();
-            }
         } else {
             setLandscapeCSS();
             window._effectiveScreenOrientation = window.orientation || 0;
-            // Automatically clear the guide if they rotate back to landscape correctly
-            window._iosLockAcknowledged = false;
-            const guide = document.getElementById('ios-lock-guide');
-            if (guide) guide.remove();
         }
         // Renderer size stays frozen — no need to change
     };
@@ -1575,9 +1586,9 @@ function exitStereoMode() {
         // Remove VR debug markers
         _removeVRDebugMarkers();
 
-        // Also remove iOS lock guide if active
-        const iosGuide = document.getElementById('ios-lock-guide');
-        if (iosGuide) iosGuide.remove();
+        // Also remove iOS sequence overlay if active
+        const iosOverlay = document.getElementById('vr-entry-overlay');
+        if (iosOverlay) iosOverlay.remove();
 
         // Re-enable OrbitControls
         if (state.controls) state.controls.enabled = true;
