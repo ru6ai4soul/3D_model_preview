@@ -565,7 +565,7 @@ function setupVRARButtons() {
         const doCardboard = () => {
             if (!state.currentModel) { alert('請先載入模型'); return; }
 
-            const proceedToVR = () => {
+            const proceedToVRLogic = () => {
                 inVR = !inVR;
                 if (inVR) {
                     const executeVRLogic = () => {
@@ -584,19 +584,23 @@ function setupVRARButtons() {
                 }
             };
 
-            // Request Gyro synchronously on button click (needed for iOS Safari!)
+            // Critical for iOS: We MUST request permission synchronously on the *first* button click
+            // BEFORE showing our custom HTML lock guide. Otherwise, iOS Safari blocks the request.
             if (!inVR && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
                     .then(permissionState => {
                         if (permissionState === 'granted') {
-                            proceedToVR();
+                            proceedToVRLogic();
                         } else {
                             alert('必須允許動作與方向存取，才能使用 VR 功能');
                         }
                     })
-                    .catch(() => proceedToVR());
+                    .catch((e) => {
+                        console.warn('DeviceOrientationEvent request failed:', e);
+                        proceedToVRLogic(); // Try to proceed anyway
+                    });
             } else {
-                proceedToVR();
+                proceedToVRLogic();
             }
         };
         vBtn.addEventListener('click', doCardboard);
