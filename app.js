@@ -532,6 +532,7 @@ function setupVRARButtons() {
 
         document.getElementById('ios-guide-confirm').addEventListener('click', () => {
             guide.remove();
+            window._iosLockAcknowledged = true;
             if (onConfirm) onConfirm();
         });
 
@@ -568,38 +569,7 @@ function setupVRARButtons() {
                 inVR = !inVR;
                 if (inVR) {
                     const executeVRLogic = () => {
-                        // If phone is in portrait, show rotate-to-landscape hint first
-                        if (isPortraitOrientation()) {
-                            inVR = false; // revert — we haven't actually entered yet
-                            const hint = document.createElement('div');
-                            hint.id = 'vr-rotate-hint';
-                            hint.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:16px;';
-                            hint.innerHTML = '<div style="font-size:60px">📱↔️</div><div>請橫拿手機再進入 VR 模式</div><button id="vr-hint-cancel" style="margin-top:12px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:8px 20px;font-size:15px;cursor:pointer;">取消</button>';
-                            document.body.appendChild(hint);
-                            const onOrient = () => {
-                                // Check orientation value after short delay for iOS
-                                setTimeout(() => {
-                                    if (!isPortraitOrientation()) {
-                                        window.removeEventListener('orientationchange', onOrient);
-                                        setTimeout(() => {
-                                            if (document.getElementById('vr-rotate-hint')) {
-                                                hint.remove();
-                                                inVR = true;
-                                                doEnterVR();
-                                            }
-                                        }, 300);
-                                    }
-                                }, 100);
-                            };
-                            window.addEventListener('orientationchange', onOrient);
-                            document.getElementById('vr-hint-cancel').addEventListener('click', () => {
-                                window.removeEventListener('orientationchange', onOrient);
-                                hint.remove();
-                                inVR = false;
-                            });
-                        } else {
-                            doEnterVR();
-                        }
+                        doEnterVR();
                     };
 
                     if (isIOS) {
@@ -1401,9 +1371,20 @@ function enterStereoMode(exitCallback) {
     const canvas = state.renderer.domElement;
     canvas.dataset.vrOrigStyle = canvas.getAttribute('style') || '';
 
-    // Freeze landscape dimensions at entry (user always enters from landscape due to hint)
-    const vrW = window.innerWidth;
-    const vrH = window.innerHeight;
+    // Freeze landscape dimensions at entry (if in portrait, swap to simulate landscape)
+    let vrW = window.innerWidth;
+    let vrH = window.innerHeight;
+    if (vrW < vrH) {
+        const temp = vrW;
+        vrW = vrH;
+        vrH = temp;
+    }
+
+    // Determine initial effective compensation for gyroscope based on entry state
+    const isPortraitAtEntry = (typeof window.orientation !== 'undefined')
+        ? Math.abs(window.orientation) !== 90
+        : (window.innerWidth < window.innerHeight);
+    const _vrEntryYawOffset = isPortraitAtEntry ? 90 : (window.orientation || 0);
 
     // Apply landscape canvas CSS
     const setLandscapeCSS = () => {
@@ -1468,18 +1449,23 @@ function enterStereoMode(exitCallback) {
 
         if (isNowPortrait) {
             setPortraitRotatedCSS();
+            window._effectiveScreenOrientation = 90;
             // User accidentally rotated to portrait mid-session (and is iOS), show lock guide to prevent tearing
-            if (isIOS) {
+            if (isIOS && !window._iosLockAcknowledged) {
                 window.showIOSLockGuide();
             }
         } else {
             setLandscapeCSS();
+            window._effectiveScreenOrientation = window.orientation || 0;
             // Automatically clear the guide if they rotate back to landscape correctly
+            window._iosLockAcknowledged = false;
             const guide = document.getElementById('ios-lock-guide');
             if (guide) guide.remove();
         }
         // Renderer size stays frozen — no need to change
     };
+    // Initialize orientation state on entry
+    doResize();
     // Also run after short delay in case initial layout isn't settled
     setTimeout(doResize, 200);
     setTimeout(doResize, 600);
@@ -1506,9 +1492,9 @@ function handleOrientation(event) {
     const beta = event.beta;
     const gamma = event.gamma;
 
-    // Capture initial alpha as forward + compensate for screen orientation
+    // Capture initial alpha as forward + compensate for initial yaw mapped to screen
     if (_firstAlpha === null) _firstAlpha = alpha;
-    const adjustedAlpha = alpha - _firstAlpha + _vrEntryOrientation;
+    const adjustedAlpha = alpha - _firstAlpha + _vrEntryYawOffset;
 
     const a = THREE.MathUtils.degToRad(adjustedAlpha);
     const b = THREE.MathUtils.degToRad(beta);
@@ -1519,8 +1505,8 @@ function handleOrientation(event) {
     const q = new THREE.Quaternion().setFromEuler(euler);
     q.multiply(_q1); // phone Y-up -> WebGL Z-forward
 
-    // Screen orientation compensation (fixed at VR entry)
-    const orient = THREE.MathUtils.degToRad(_vrEntryOrientation);
+    // Screen orientation compensation (dynamic tracking of CSS rotation)
+    const orient = THREE.MathUtils.degToRad(window._effectiveScreenOrientation || 0);
     const screenQ = new THREE.Quaternion().setFromAxisAngle(_zee, -orient);
     q.multiply(screenQ);
 
