@@ -514,35 +514,43 @@ function setupVRARButtons() {
         overlay.id = 'vr-entry-overlay';
         overlay.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:20px;text-align:center;padding:24px;';
 
-        // Step 1: Prompt to lock portrait
+        // Use distinct hidden containers instead of innerHTML to preserve event listeners
         overlay.innerHTML = `
-            <div style="font-size:60px; margin-bottom:10px;">📱🔒</div>
-            <div style="line-height:1.6;max-width:300px;font-size:18px;">
-                1. 請先將手機<b style="color:#ffcc00;">鎖定為直式</b>方向<br>
-                <span style="font-size:14px;color:#aaa;">(開啟控制中心的直向鎖定)</span>
+            <div id="vr-step-1" style="display:flex;flex-direction:column;align-items:center;">
+                <div style="font-size:60px; margin-bottom:10px;">📱🔒</div>
+                <div style="line-height:1.6;max-width:300px;font-size:18px;">
+                    請先將手機<b style="color:#ffcc00;">鎖定為直式方向</b>
+                </div>
+                <button id="step1-btn" style="margin-top:20px;background:#6a4cff;color:#fff;border:none;border-radius:24px;padding:14px 28px;font-size:16px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(106,76,255,0.4);">
+                    我已鎖定
+                </button>
+                <button id="cancel-btn-1" style="margin-top:8px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;">取消</button>
             </div>
-            <button id="step1-btn" style="margin-top:20px;background:#6a4cff;color:#fff;border:none;border-radius:24px;padding:14px 28px;font-size:16px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(106,76,255,0.4);">
-                我已鎖定
-            </button>
-            <button id="cancel-btn" style="margin-top:8px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;">取消</button>
+            <div id="vr-step-2" style="display:none;flex-direction:column;align-items:center;">
+                <div style="font-size:60px; margin-bottom:10px;">📱➡️📺</div>
+                <div style="line-height:1.6;max-width:300px;font-size:18px;">
+                    現在請將手機<b style="color:#ffcc00;">打橫</b>
+                </div>
+                <button id="cancel-btn-2" style="margin-top:30px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;">取消</button>
+            </div>
         `;
         document.body.appendChild(overlay);
         overlay.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
-        document.getElementById('cancel-btn').addEventListener('click', () => {
+        const step1Container = document.getElementById('vr-step-1');
+        const step2Container = document.getElementById('vr-step-2');
+
+        const handleCancel = () => {
             overlay.remove();
             if (onCancel) onCancel();
-        });
+        };
+
+        document.getElementById('cancel-btn-1').addEventListener('click', handleCancel);
 
         document.getElementById('step1-btn').addEventListener('click', () => {
-            // Step 2: Prompt to physically rotate sideways
-            overlay.innerHTML = `
-                <div style="font-size:60px; margin-bottom:10px;">📱➡️📺</div>
-                <div style="line-height:1.6;max-width:300px;font-size:18px;">
-                    2. 現在請將手機<b style="color:#ffcc00;">打橫</b>
-                </div>
-                <button id="cancel-btn-2" style="margin-top:30px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;">取消</button>
-            `;
+            // Switch view to Step 2
+            step1Container.style.display = 'none';
+            step2Container.style.display = 'flex';
 
             // Use gyroscope to detect physical landscape since portrait lock blocks 'orientationchange'
             const checkLandscape = (e) => {
@@ -557,8 +565,7 @@ function setupVRARButtons() {
 
             document.getElementById('cancel-btn-2').addEventListener('click', () => {
                 window.removeEventListener('deviceorientation', checkLandscape);
-                overlay.remove();
-                if (onCancel) onCancel();
+                handleCancel();
             });
         });
     };
