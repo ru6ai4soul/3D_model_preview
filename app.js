@@ -515,39 +515,67 @@ function setupVRARButtons() {
         overlay.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:20px;text-align:center;padding:24px;';
 
         // Use distinct hidden containers instead of innerHTML to preserve event listeners
-        overlay.innerHTML = `
-            <div id="vr-step-1" style="display:flex;flex-direction:column;align-items:center;">
-                <div style="font-size:60px; margin-bottom:10px;">📱🔒</div>
-                <div style="line-height:1.6;max-width:300px;font-size:18px;">
-                    請先將手機<b style="color:#ffcc00;">鎖定為直式方向</b>
-                </div>
-                <button id="step1-btn" style="margin-top:20px;background:#6a4cff;color:#fff;border:none;border-radius:24px;padding:14px 28px;font-size:16px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(106,76,255,0.4);">
-                    我已鎖定
-                </button>
-                <button id="cancel-btn-1" style="margin-top:8px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;">取消</button>
-            </div>
-            <div id="vr-step-2" style="display:none;flex-direction:column;align-items:center;">
-                <div style="font-size:60px; margin-bottom:10px;">📱➡️📺</div>
-                <div style="line-height:1.6;max-width:300px;font-size:18px;">
-                    現在請將手機<b style="color:#ffcc00;">打橫</b>
-                </div>
-                <button id="cancel-btn-2" style="margin-top:30px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;">取消</button>
-            </div>
-        `;
+
+        // --- STEP 1 UI ---
+        const step1Container = document.createElement('div');
+        step1Container.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
+
+        const icon1 = document.createElement('div');
+        icon1.style.cssText = 'font-size:60px; margin-bottom:10px;';
+        icon1.textContent = '📱🔒';
+
+        const text1 = document.createElement('div');
+        text1.style.cssText = 'line-height:1.6;max-width:300px;font-size:18px;';
+        text1.innerHTML = '請先將手機<b style="color:#ffcc00;">鎖定為直式方向</b>';
+
+        const btn1 = document.createElement('button');
+        btn1.style.cssText = 'margin-top:20px;background:#6a4cff;color:#fff;border:none;border-radius:24px;padding:14px 28px;font-size:16px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(106,76,255,0.4);';
+        btn1.textContent = '我已鎖定';
+
+        const cancel1 = document.createElement('button');
+        cancel1.style.cssText = 'margin-top:8px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;';
+        cancel1.textContent = '取消';
+
+        step1Container.appendChild(icon1);
+        step1Container.appendChild(text1);
+        step1Container.appendChild(btn1);
+        step1Container.appendChild(cancel1);
+
+        // --- STEP 2 UI ---
+        const step2Container = document.createElement('div');
+        step2Container.style.cssText = 'display:none;flex-direction:column;align-items:center;';
+
+        const icon2 = document.createElement('div');
+        icon2.style.cssText = 'font-size:60px; margin-bottom:10px;';
+        icon2.textContent = '📱➡️📺';
+
+        const text2 = document.createElement('div');
+        text2.style.cssText = 'line-height:1.6;max-width:300px;font-size:18px;';
+        text2.innerHTML = '現在請將手機<b style="color:#ffcc00;">打橫</b>';
+
+        const cancel2 = document.createElement('button');
+        cancel2.style.cssText = 'margin-top:30px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;';
+        cancel2.textContent = '取消';
+
+        step2Container.appendChild(icon2);
+        step2Container.appendChild(text2);
+        step2Container.appendChild(cancel2);
+
+        // Add both to overlay
+        overlay.appendChild(step1Container);
+        overlay.appendChild(step2Container);
+
         document.body.appendChild(overlay);
         overlay.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-
-        const step1Container = document.getElementById('vr-step-1');
-        const step2Container = document.getElementById('vr-step-2');
 
         const handleCancel = () => {
             overlay.remove();
             if (onCancel) onCancel();
         };
 
-        document.getElementById('cancel-btn-1').addEventListener('click', handleCancel);
+        cancel1.addEventListener('click', handleCancel);
 
-        document.getElementById('step1-btn').addEventListener('click', () => {
+        btn1.addEventListener('click', () => {
             // Switch view to Step 2
             step1Container.style.display = 'none';
             step2Container.style.display = 'flex';
@@ -561,10 +589,10 @@ function setupVRARButtons() {
                     if (onSuccess) onSuccess();
                 }
             };
-            window.addEventListener('deviceorientation', checkLandscape);
+            window.addEventListener('deviceorientation', checkLandscape, true);
 
-            document.getElementById('cancel-btn-2').addEventListener('click', () => {
-                window.removeEventListener('deviceorientation', checkLandscape);
+            cancel2.addEventListener('click', () => {
+                window.removeEventListener('deviceorientation', checkLandscape, true);
                 handleCancel();
             });
         });
