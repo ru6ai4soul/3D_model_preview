@@ -503,6 +503,46 @@ function setupVRARButtons() {
         setupIOSVRFallback(vrButton, floatVR);
     }
 
+    // Global helper for iOS Lock Guide
+    window.showIOSLockGuide = function (onConfirm, onCancel) {
+        if (!isIOS) {
+            if (onConfirm) onConfirm();
+            return;
+        }
+        if (document.getElementById('ios-lock-guide')) return;
+
+        const guide = document.createElement('div');
+        guide.id = 'ios-lock-guide';
+        guide.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:20px;text-align:center;padding:24px;';
+
+        guide.innerHTML = `
+            <div style="font-size:60px; margin-bottom:10px;">📱🔒</div>
+            <div style="line-height:1.6;max-width:300px;font-size:16px;">
+                為了獲得最佳 VR 體驗，請<b>鎖定手機方向</b>並保持<b>橫式</b>。
+            </div>
+            <button id="ios-guide-confirm" style="margin-top:20px;background:#6a4cff;color:#fff;border:none;border-radius:24px;padding:14px 28px;font-size:16px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(106,76,255,0.4);">
+                我已鎖定，開始體驗
+            </button>
+            ${onCancel ? `<button id="ios-guide-cancel" style="margin-top:8px;background:transparent;color:#aaa;border:none;padding:10px 20px;font-size:15px;cursor:pointer;">取消</button>` : ''}
+        `;
+        document.body.appendChild(guide);
+
+        // Prevent default touch behaviors on the guide
+        guide.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+        document.getElementById('ios-guide-confirm').addEventListener('click', () => {
+            guide.remove();
+            if (onConfirm) onConfirm();
+        });
+
+        if (onCancel) {
+            document.getElementById('ios-guide-cancel').addEventListener('click', () => {
+                guide.remove();
+                onCancel();
+            });
+        }
+    };
+
     function setupIOSVRFallback(vBtn, fVBtn) {
         showBtn(vBtn, fVBtn);
         let inVR = false;
@@ -527,37 +567,45 @@ function setupVRARButtons() {
             const proceedToVR = () => {
                 inVR = !inVR;
                 if (inVR) {
-                    // If phone is in portrait, show rotate-to-landscape hint first
-                    if (isPortraitOrientation()) {
-                        inVR = false; // revert — we haven't actually entered yet
-                        const hint = document.createElement('div');
-                        hint.id = 'vr-rotate-hint';
-                        hint.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:16px;';
-                        hint.innerHTML = '<div style="font-size:60px">📱↔️</div><div>請橫拿手機再進入 VR 模式</div><button id="vr-hint-cancel" style="margin-top:12px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:8px 20px;font-size:15px;cursor:pointer;">取消</button>';
-                        document.body.appendChild(hint);
-                        const onOrient = () => {
-                            // Check orientation value after short delay for iOS
-                            setTimeout(() => {
-                                if (!isPortraitOrientation()) {
-                                    window.removeEventListener('orientationchange', onOrient);
-                                    setTimeout(() => {
-                                        if (document.getElementById('vr-rotate-hint')) {
-                                            hint.remove();
-                                            inVR = true;
-                                            doEnterVR();
-                                        }
-                                    }, 300);
-                                }
-                            }, 100);
-                        };
-                        window.addEventListener('orientationchange', onOrient);
-                        document.getElementById('vr-hint-cancel').addEventListener('click', () => {
-                            window.removeEventListener('orientationchange', onOrient);
-                            hint.remove();
-                            inVR = false;
-                        });
+                    const executeVRLogic = () => {
+                        // If phone is in portrait, show rotate-to-landscape hint first
+                        if (isPortraitOrientation()) {
+                            inVR = false; // revert — we haven't actually entered yet
+                            const hint = document.createElement('div');
+                            hint.id = 'vr-rotate-hint';
+                            hint.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:18px;gap:16px;';
+                            hint.innerHTML = '<div style="font-size:60px">📱↔️</div><div>請橫拿手機再進入 VR 模式</div><button id="vr-hint-cancel" style="margin-top:12px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:8px 20px;font-size:15px;cursor:pointer;">取消</button>';
+                            document.body.appendChild(hint);
+                            const onOrient = () => {
+                                // Check orientation value after short delay for iOS
+                                setTimeout(() => {
+                                    if (!isPortraitOrientation()) {
+                                        window.removeEventListener('orientationchange', onOrient);
+                                        setTimeout(() => {
+                                            if (document.getElementById('vr-rotate-hint')) {
+                                                hint.remove();
+                                                inVR = true;
+                                                doEnterVR();
+                                            }
+                                        }, 300);
+                                    }
+                                }, 100);
+                            };
+                            window.addEventListener('orientationchange', onOrient);
+                            document.getElementById('vr-hint-cancel').addEventListener('click', () => {
+                                window.removeEventListener('orientationchange', onOrient);
+                                hint.remove();
+                                inVR = false;
+                            });
+                        } else {
+                            doEnterVR();
+                        }
+                    };
+
+                    if (isIOS) {
+                        window.showIOSLockGuide(executeVRLogic, () => { inVR = false; });
                     } else {
-                        doEnterVR();
+                        executeVRLogic();
                     }
                 } else {
                     exitStereoMode();
@@ -1417,10 +1465,18 @@ function enterStereoMode(exitCallback) {
         const isNowPortrait = (typeof window.orientation !== 'undefined')
             ? Math.abs(window.orientation) !== 90
             : (window.innerWidth < window.innerHeight);
+
         if (isNowPortrait) {
             setPortraitRotatedCSS();
+            // User accidentally rotated to portrait mid-session (and is iOS), show lock guide to prevent tearing
+            if (isIOS) {
+                window.showIOSLockGuide();
+            }
         } else {
             setLandscapeCSS();
+            // Automatically clear the guide if they rotate back to landscape correctly
+            const guide = document.getElementById('ios-lock-guide');
+            if (guide) guide.remove();
         }
         // Renderer size stays frozen — no need to change
     };
@@ -1528,6 +1584,10 @@ function exitStereoMode() {
 
         // Remove VR debug markers
         _removeVRDebugMarkers();
+
+        // Also remove iOS lock guide if active
+        const iosGuide = document.getElementById('ios-lock-guide');
+        if (iosGuide) iosGuide.remove();
 
         // Re-enable OrbitControls
         if (state.controls) state.controls.enabled = true;
