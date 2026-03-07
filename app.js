@@ -1433,6 +1433,9 @@ function enterStereoMode(exitCallback) {
     state.camera.fov = 80;
     state.camera.updateProjectionMatrix();
 
+    // Lower pixel ratio to max 1.5x for performance in VR (rendering two viewports is heavy)
+    state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+
     // === VR DEBUG: Add direction markers around camera ===
     _addVRDebugMarkers();
 
@@ -1552,10 +1555,20 @@ function startGyro() {
 
 function handleOrientation(event) {
     if (!state.camera || !stereoActive) return;
-    if (event.alpha === null) return;
+
+    // On iOS Safari, alpha can be null if absolute orientation fails or isn't requested properly.
+    // We must fallback to webkitCompassHeading or 0 so beta/gamma rotations still work.
+    let alpha = event.alpha;
+    if (alpha === null || typeof alpha === 'undefined') {
+        if (typeof event.webkitCompassHeading !== 'undefined') {
+            alpha = -event.webkitCompassHeading;
+        } else {
+            alpha = 0;
+        }
+    }
+
     _initGyroConstants();
 
-    const alpha = event.alpha;
     const beta = event.beta;
     const gamma = event.gamma;
 
@@ -1644,6 +1657,9 @@ function exitStereoMode() {
 
         // Re-enable OrbitControls
         if (state.controls) state.controls.enabled = true;
+
+        // Restore default renderer pixel ratio
+        state.renderer.setPixelRatio(window.devicePixelRatio);
 
         // Remove VR overlay FIRST (before any layout work)
         const vrOverlay = enterStereoMode._vrOverlay;
