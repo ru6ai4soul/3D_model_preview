@@ -584,7 +584,7 @@ function setupVRARButtons() {
             const checkLandscape = (e) => {
                 // gamma is left/right tilt. +/- 90 is landscape. We threshold at 45.
                 if (Math.abs(e.gamma) > 45) {
-                    window.removeEventListener('deviceorientation', checkLandscape);
+                    window.removeEventListener('deviceorientation', checkLandscape, true);
                     overlay.remove();
                     if (onSuccess) onSuccess();
                 }
@@ -601,62 +601,79 @@ function setupVRARButtons() {
     function setupIOSVRFallback(vBtn, fVBtn) {
         showBtn(vBtn, fVBtn);
         let inVR = false;
+        let sequencesRunning = false;
+
         const isPortraitOrientation = () => {
             // Use window.orientation: 0/180 = portrait, ±90 = landscape
-            // Falls back to dimension check if API unavailable
             if (typeof window.orientation !== 'undefined') {
                 return Math.abs(window.orientation) !== 90;
             }
             return window.innerWidth < window.innerHeight;
         };
+
         const doEnterVR = () => {
+            sequencesRunning = false;
             state.camera.fov = 80;
             state.camera.updateProjectionMatrix();
             enterStereoMode(doCardboard);
             vBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
             if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">👁️</span><span class="btn-text">退出 VR</span>';
         };
+
         const doCardboard = () => {
             if (!state.currentModel) { alert('請先載入模型'); return; }
 
-            const proceedToVRLogic = () => {
-                inVR = !inVR;
-                if (inVR) {
-                    const executeVRLogic = () => {
-                        doEnterVR();
-                    };
+            if (inVR) {
+                // Exit VR immediately
+                inVR = false;
+                sequencesRunning = false;
+                exitStereoMode();
+                vBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
+                if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
+                return;
+            }
 
-                    if (isIOS) {
-                        window.executeIOSVREntrySequence(executeVRLogic, () => { inVR = false; });
-                    } else {
-                        executeVRLogic();
-                    }
+            if (sequencesRunning) return; // Prevent double-triggering
+
+            const executeVRLogic = () => {
+                inVR = true;
+                doEnterVR();
+            };
+
+            const cancelSequence = () => {
+                sequencesRunning = false;
+                inVR = false;
+            };
+
+            const startVRFlow = () => {
+                sequencesRunning = true;
+                if (isIOS) {
+                    window.executeIOSVREntrySequence(executeVRLogic, cancelSequence);
                 } else {
-                    exitStereoMode();
-                    vBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR 模式</span>';
-                    if (fVBtn) fVBtn.innerHTML = '<span class="btn-icon">🥽</span><span class="btn-text">VR</span>';
+                    executeVRLogic();
                 }
             };
 
-            // Critical for iOS: We MUST request permission synchronously on the *first* button click
-            // BEFORE showing our custom HTML lock guide. Otherwise, iOS Safari blocks the request.
-            if (!inVR && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            // Request Gyro synchronously on the first interaction if required
+            if (isIOS && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // If permission already granted/denied, this is usually fast
                 DeviceOrientationEvent.requestPermission()
                     .then(permissionState => {
                         if (permissionState === 'granted') {
-                            proceedToVRLogic();
+                            startVRFlow();
                         } else {
                             alert('必須允許動作與方向存取，才能使用 VR 功能');
                         }
                     })
                     .catch((e) => {
                         console.warn('DeviceOrientationEvent request failed:', e);
-                        proceedToVRLogic(); // Try to proceed anyway
+                        startVRFlow(); // Try to proceed anyway
                     });
             } else {
-                proceedToVRLogic();
+                startVRFlow();
             }
         };
+
         vBtn.addEventListener('click', doCardboard);
         if (fVBtn) fVBtn.addEventListener('click', doCardboard);
     }
