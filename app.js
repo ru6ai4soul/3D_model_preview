@@ -634,6 +634,7 @@ function setupVRARButtons() {
             }
 
             if (sequencesRunning) return; // Prevent double-triggering
+            sequencesRunning = true; // LOCK IMMEDIATELY to prevent double clicks from spawning 2 overlays
 
             const executeVRLogic = () => {
                 inVR = true;
@@ -660,16 +661,25 @@ function setupVRARButtons() {
                 DeviceOrientationEvent.requestPermission()
                     .then(permissionState => {
                         if (permissionState === 'granted') {
+                            // CRITICAL IOS FIX: Attach the primary game listener inside the exact permission resolution tick!
+                            // If attached later, Safari considers it unauthorised and silences events.
+                            window.addEventListener('deviceorientation', handleOrientation, true);
                             startVRFlow();
                         } else {
+                            sequencesRunning = false;
                             alert('必須允許動作與方向存取，才能使用 VR 功能');
                         }
                     })
                     .catch((e) => {
                         console.warn('DeviceOrientationEvent request failed:', e);
+                        sequencesRunning = false;
                         startVRFlow(); // Try to proceed anyway
                     });
             } else {
+                // Not iOS or no permission needed
+                if (!isIOS) {
+                    window.addEventListener('deviceorientation', handleOrientation, true);
+                }
                 startVRFlow();
             }
         };
@@ -1400,12 +1410,14 @@ function _removeVRDebugMarkers() {
 }
 function enterStereoMode(exitCallback) {
     // Always clean up any previous session's listeners before starting a new one
-    // This fixes Android: second VR entry no longer stacks duplicate listeners
     if (enterStereoMode._resizeHandler) {
         window.removeEventListener('resize', enterStereoMode._resizeHandler);
         enterStereoMode._resizeHandler = null;
     }
-    window.removeEventListener('deviceorientation', handleOrientation, true);
+
+    // NOTE: We intentionally DO NOT remove 'deviceorientation' handler here. 
+    // On iOS Safari, removing the authorised listener slot breaks the sensor pipeline!
+
     stereoActive = false; // reset first, then set true below
 
     _initGyroConstants();
@@ -1560,7 +1572,8 @@ function enterStereoMode(exitCallback) {
 }
 
 function startGyro() {
-    window.addEventListener('deviceorientation', handleOrientation, true);
+    // Sensor listener is now attached permanently after permissions are granted.
+    // startGyro() is left here to cover edge cases, but the real attachment happens in doCardboard().
 }
 
 function _updateVRDebugText(text) {
