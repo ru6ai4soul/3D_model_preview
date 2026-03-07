@@ -1445,6 +1445,16 @@ function enterStereoMode(exitCallback) {
     if (panel) panel.style.display = 'none';
     if (header) header.style.display = 'none';
 
+    if (window._updateVRDebugText) _updateVRDebugText("VR Started. Waiting for gyro events...");
+    else {
+        const div = document.createElement('div');
+        div.id = 'vr-sys-debug';
+        div.style.cssText = 'position:fixed;top:30px;left:30px;color:#0f0;font-size:16px;z-index:20000;font-family:monospace;background:rgba(0,0,0,0.7);padding:10px;pointer-events:none;white-space:pre-wrap;';
+        document.body.appendChild(div);
+        window._vrSysDebug = div;
+        window._vrSysDebug.textContent = "VR Started. Waiting for gyro events...";
+    }
+
     // *** Canvas fullscreen with orientation-lock via CSS transform ***
     const canvas = state.renderer.domElement;
     canvas.dataset.vrOrigStyle = canvas.getAttribute('style') || '';
@@ -1553,6 +1563,17 @@ function startGyro() {
     window.addEventListener('deviceorientation', handleOrientation, true);
 }
 
+function _updateVRDebugText(text) {
+    if (!window._vrSysDebug) {
+        const div = document.createElement('div');
+        div.id = 'vr-sys-debug';
+        div.style.cssText = 'position:fixed;top:30px;left:30px;color:#0f0;font-size:16px;z-index:20000;font-family:monospace;background:rgba(0,0,0,0.7);padding:10px;pointer-events:none;white-space:pre-wrap;';
+        document.body.appendChild(div);
+        window._vrSysDebug = div;
+    }
+    window._vrSysDebug.textContent = text;
+}
+
 function handleOrientation(event) {
     if (!state.camera || !stereoActive) return;
 
@@ -1569,28 +1590,35 @@ function handleOrientation(event) {
 
     _initGyroConstants();
 
-    const beta = event.beta;
-    const gamma = event.gamma;
+    const beta = event.beta || 0;
+    const gamma = event.gamma || 0;
 
     // Capture initial alpha as forward + compensate for initial yaw mapped to screen
     if (_firstAlpha === null) _firstAlpha = alpha;
     const adjustedAlpha = alpha - _firstAlpha + _vrEntryYawOffset;
 
-    const a = THREE.MathUtils.degToRad(adjustedAlpha);
-    const b = THREE.MathUtils.degToRad(beta);
-    const g = THREE.MathUtils.degToRad(gamma);
+    try {
+        const a = THREE.MathUtils.degToRad(adjustedAlpha);
+        const b = THREE.MathUtils.degToRad(beta);
+        const g = THREE.MathUtils.degToRad(gamma);
 
-    // Standard DeviceOrientationControls quaternion
-    const euler = new THREE.Euler(b, a, -g, 'YXZ');
-    const q = new THREE.Quaternion().setFromEuler(euler);
-    q.multiply(_q1); // phone Y-up -> WebGL Z-forward
+        // Standard DeviceOrientationControls quaternion
+        const euler = new THREE.Euler(b, a, -g, 'YXZ');
+        const q = new THREE.Quaternion().setFromEuler(euler);
+        q.multiply(_q1); // phone Y-up -> WebGL Z-forward
 
-    // Screen orientation compensation (dynamic tracking of CSS rotation)
-    const orient = THREE.MathUtils.degToRad(window._effectiveScreenOrientation || 0);
-    const screenQ = new THREE.Quaternion().setFromAxisAngle(_zee, -orient);
-    q.multiply(screenQ);
+        // Screen orientation compensation (dynamic tracking of CSS rotation)
+        const orientAngle = window._effectiveScreenOrientation || 0;
+        const orient = THREE.MathUtils.degToRad(orientAngle);
+        const screenQ = new THREE.Quaternion().setFromAxisAngle(_zee, -orient);
+        q.multiply(screenQ);
 
-    state.camera.quaternion.copy(q);
+        state.camera.quaternion.copy(q);
+
+        _updateVRDebugText(`A:${Number(alpha).toFixed(1)} B:${Number(beta).toFixed(1)} G:${Number(gamma).toFixed(1)}\nAdjA:${Number(adjustedAlpha).toFixed(1)} O:${orientAngle}\nQ: x${q.x.toFixed(2)} y${q.y.toFixed(2)} z${q.z.toFixed(2)}`);
+    } catch (err) {
+        _updateVRDebugText("ERR: " + err.message);
+    }
 }
 
 // Stereo split-screen rendering
@@ -1654,6 +1682,11 @@ function exitStereoMode() {
         // Also remove iOS sequence overlay if active
         const iosOverlay = document.getElementById('vr-entry-overlay');
         if (iosOverlay) iosOverlay.remove();
+
+        if (window._vrSysDebug) {
+            window._vrSysDebug.remove();
+            window._vrSysDebug = null;
+        }
 
         // Re-enable OrbitControls
         if (state.controls) state.controls.enabled = true;
